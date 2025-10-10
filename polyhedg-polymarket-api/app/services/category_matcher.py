@@ -19,7 +19,7 @@ class CategoryMatcher:
             api_key: OpenAI API key. If not provided, will use OPENAI_API_KEY env var.
         """
         self.client = OpenAI(api_key=api_key or os.getenv("OPENAI_API_KEY"))
-        self.model = "gpt-oss-120b"
+        self.model = "gpt-4o-mini"  # Fast and cost-effective
         
         # Load system prompt from file
         prompts_dir = Path(__file__).parent.parent / "prompts"
