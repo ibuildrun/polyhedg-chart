@@ -1,5 +1,7 @@
 import json
 import sys
+import os
+import glob
 
 
 def count_events_in_file(filename):
@@ -40,26 +42,45 @@ def count_events_in_file(filename):
 
 def main():
     """
-    Handles command-line arguments to determine which file to count.
+    Counts events from all JSON files in the data/res folder.
     """
-    # Check if a filename was provided as a command-line argument
-    if len(sys.argv) > 1:
-        # Use the filename provided by the user (e.g., python count_events.py my_file.json)
-        input_filename = sys.argv[1]
-    else:
-        # If no filename is provided, use a default and inform the user.
-        input_filename = "./data/get-events-100k-500.json"
-        print(f"No filename provided. Using default: '{input_filename}'")
-        print(
-            "Tip: You can specify any file, like: python count_events.py api_response.json\n"
-        )
+    # Define the res folder path
+    res_folder = "./data/res"
 
-    event_count = count_events_in_file(input_filename)
+    # Check if the res folder exists
+    if not os.path.exists(res_folder):
+        print(f"Error: The folder '{res_folder}' does not exist.")
+        return
 
-    # If the function ran successfully (didn't return None), print the result.
-    if event_count is not None:
-        print("\n--- Result ---")
-        print(f"The file '{input_filename}' contains {event_count} events.")
+    # Get all JSON files in the res folder
+    json_files = glob.glob(os.path.join(res_folder, "*.json"))
+
+    if not json_files:
+        print(f"No JSON files found in '{res_folder}'.")
+        return
+
+    # Sort files by name for consistent output
+    json_files.sort()
+
+    print(f"Counting events from all JSON files in '{res_folder}'...\n")
+
+    total_events = 0
+    successful_files = 0
+
+    # Process each JSON file
+    for json_file in json_files:
+        filename = os.path.basename(json_file)
+        event_count = count_events_in_file(json_file)
+
+        if event_count is not None:
+            print(f"{filename}: {event_count} events")
+            total_events += event_count
+            successful_files += 1
+
+    # Print summary
+    print("\n--- Summary ---")
+    print(f"Total files processed: {successful_files}/{len(json_files)}")
+    print(f"Total events across all files: {total_events}")
 
 
 if __name__ == "__main__":

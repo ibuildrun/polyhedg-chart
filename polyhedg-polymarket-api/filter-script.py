@@ -86,47 +86,73 @@ def process_data(data):
 
 def main():
     """
-    Main function to load, process, and save the data.
+    Main function to load, process, and save the data from multiple files.
     """
-    input_filename = "./data/get-events-100k.json"
-    output_filename = "./data/get-events-100k-filtered.json"
+    input_folder = "./data/res"
+    output_filename = "./data/res/filtered-combined.json"
 
+    # Get all JSON files from the res folder
     try:
-        with open(input_filename, "r", encoding="utf-8") as f:
-            print(f"Reading data from '{input_filename}'...")
-            original_data = json.load(f)
-            original_size = os.path.getsize(input_filename)
+        json_files = sorted([f for f in os.listdir(input_folder) if f.endswith('.json')])
+        if not json_files:
+            print(f"Error: No JSON files found in '{input_folder}'.")
+            return
     except FileNotFoundError:
-        print(
-            f"Error: '{input_filename}' not found. Please save your API response in this file."
-        )
-        return
-    except json.JSONDecodeError:
-        print(
-            f"Error: Could not decode JSON from '{input_filename}'. The file may be corrupt."
-        )
+        print(f"Error: Folder '{input_folder}' not found.")
         return
 
-    print("Processing and filtering data...")
-    filtered_data = process_data(original_data)
+    print(f"Found {len(json_files)} JSON files to process: {json_files}")
 
-    if filtered_data is not None:
+    all_filtered_data = []
+    total_original_size = 0
+
+    # Process each JSON file
+    for json_file in json_files:
+        input_filepath = os.path.join(input_folder, json_file)
+
+        try:
+            with open(input_filepath, "r", encoding="utf-8") as f:
+                print(f"\nReading data from '{json_file}'...")
+                original_data = json.load(f)
+                file_size = os.path.getsize(input_filepath)
+                total_original_size += file_size
+
+                # Process and filter data
+                print(f"Processing {len(original_data) if isinstance(original_data, list) else 1} events from '{json_file}'...")
+                filtered_data = process_data(original_data)
+
+                if filtered_data is not None:
+                    all_filtered_data.extend(filtered_data)
+                    print(f"Added {len(filtered_data)} filtered events from '{json_file}'")
+
+        except FileNotFoundError:
+            print(f"Warning: '{json_file}' not found. Skipping.")
+            continue
+        except json.JSONDecodeError:
+            print(f"Warning: Could not decode JSON from '{json_file}'. Skipping.")
+            continue
+
+    # Write combined output
+    if all_filtered_data:
         with open(output_filename, "w", encoding="utf-8") as f:
-            json.dump(filtered_data, f, indent=2)
+            json.dump(all_filtered_data, f, indent=2)
 
         output_size = os.path.getsize(output_filename)
-        size_reduction = original_size - output_size
+        size_reduction = total_original_size - output_size
         reduction_percent = (
-            (size_reduction / original_size) * 100 if original_size > 0 else 0
+            (size_reduction / total_original_size) * 100 if total_original_size > 0 else 0
         )
 
         print("\n--- Success! ---")
-        print(f"Filtered data has been saved to '{output_filename}'.")
-        print(f"Original file size: {original_size / 1024:.2f} KB")
+        print(f"Combined filtered data has been saved to '{output_filename}'.")
+        print(f"Total events processed: {len(all_filtered_data)}")
+        print(f"Total original size: {total_original_size / 1024:.2f} KB")
         print(f"New file size:      {output_size / 1024:.2f} KB")
         print(
             f"Size reduction:     {size_reduction / 1024:.2f} KB ({reduction_percent:.2f}%)"
         )
+    else:
+        print("\nNo data was processed successfully.")
 
 
 if __name__ == "__main__":
