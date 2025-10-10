@@ -12,10 +12,8 @@ build
 .gitignore
 README.md
 .DS_Store
+data/
+*.sh
 venv/
 env/
-node_modules/
-src/
-package.json
-tsconfig.json
-Caddyfile
+
