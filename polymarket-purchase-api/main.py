@@ -42,6 +42,41 @@ class CancelRequest(BaseModel):
 def read_root():
     return {"status": "PolyMarket Order Proxy is running"}
 
+@app.get("/balance", tags=["Account"])
+async def get_balance():
+    """
+    Returns the USDC balance and allowance for the configured wallet.
+    """
+    if not all([PRIVATE_KEY, FUNDER]):
+        raise HTTPException(status_code=500, detail="Server configuration error: Credentials not set.")
+
+    try:
+        client = ClobClient(
+            "https://clob.polymarket.com",
+            key=PRIVATE_KEY,
+            chain_id=137
+        )
+        client.set_api_creds(client.create_or_derive_api_creds())
+
+        # Get wallet address
+        address = client.get_address()
+
+        # Get USDC balance
+        balance = client.get_balance()
+
+        # Get allowance (how much the exchange contract can spend)
+        allowance = client.get_allowance()
+
+        return {
+            "address": address,
+            "balance": balance,
+            "allowance": allowance,
+            "balance_usdc": float(balance) / 1e6,  # Convert from raw to USDC
+            "allowance_usdc": float(allowance) / 1e6
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get balance: {e}")
+
 @app.post("/place-batch-orders", tags=["Orders"])
 async def create_batch_polymarket_orders(request: BatchOrderRequest):
     # (This endpoint's code remains the same as before)
