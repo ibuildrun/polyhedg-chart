@@ -1,317 +1,194 @@
-# Polymarket API
+# Polymarket API - TEE Configuration
 
-A FastAPI-based REST API for processing and filtering Polymarket event data from JSON files.
-
-## Overview
-
-This API provides endpoints to count and filter Polymarket events stored in JSON files. It extracts core functionality from Python scripts and exposes them as RESTful endpoints with proper validation and error handling.
+AI-powered prediction market event search API with TEE (Trusted Execution Environment) support.
 
 ## Features
 
-- Count events across multiple JSON files
-- Filter events by tags with flexible criteria
-- Automatic JSON file discovery and processing
-- CORS enabled for frontend integration
-- Interactive API documentation (Swagger UI)
-- Pydantic validation for type safety
+- **AI Category Matching**: Natural language queries to match relevant event categories
+- **Smart Event Search**: Combined AI + filtering for relevant events
+- **Event Scoring**: AI relevance scoring (0-100) for each event
+- **TEE Ready**: Docker + Caddy with TLS for secure deployment
 
-## Installation
+## Quick Start
 
-### Prerequisites
+### Local Development
 
-- Python 3.8+
-- pip
-
-### Setup
-
-1. Clone the repository:
 ```bash
-git clone <repository-url>
-cd polyhedg-polymarket-api
-```
-
-2. Install dependencies:
-```bash
+# Install dependencies
 pip install -r requirements.txt
+
+# Set up environment
+cp .env.example .env
+# Edit .env and add your OPENAI_API_KEY
+
+# Run server
+python -m app.main
+# or
+uvicorn app.main:app --reload --port 80
 ```
 
-## Running the Server
-
-### Development Mode
-
-Start the server with auto-reload enabled:
+### Docker Deployment
 
 ```bash
-uvicorn app.main:app --reload
+# Build image
+docker build -t polymarket-api .
+
+# Run container
+docker run -p 80:80 \
+  -e OPENAI_API_KEY=your_key_here \
+  -e PORT=80 \
+  polymarket-api
 ```
 
-### Production Mode
+### TEE Deployment with TLS
+
+The application is configured to work with Caddy for automatic HTTPS:
 
 ```bash
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+# Environment variables needed:
+# - DOMAIN: Your domain name
+# - APP_PORT: Internal app port (default: 80)
+# - OPENAI_API_KEY: OpenAI API key
+# - PORT: Port the app listens on (default: 80)
+
+# TLS certificates expected at:
+# - /run/tls/fullchain.pem
+# - /run/tls/privkey.pem
 ```
-
-The server will start at `http://localhost:8000`
-
-## API Documentation
-
-Once the server is running, access the interactive documentation at:
-
-- **Swagger UI**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
 
 ## API Endpoints
 
 ### Health Check
-
-#### `GET /`
-
-Check if the API is running.
-
-**Response:**
-```json
-{
-  "status": "ok",
-  "message": "Polymarket API is running",
-  "version": "1.0.0"
-}
-```
-
----
-
-### Count Events
-
-#### `GET /events/count`
-
-Count the number of events in all JSON files within a specified folder.
-
-**Query Parameters:**
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| folder_path | string | No | ./data/res | Path to folder containing JSON files |
-
-**Example Request:**
 ```bash
-curl "http://localhost:8000/events/count?folder_path=./data/res"
+GET /health
 ```
 
-**Response:**
-```json
-{
-  "files": [
-    {
-      "filename": "1000.json",
-      "event_count": 150
-    },
-    {
-      "filename": "2000.json",
-      "event_count": 200
-    }
-  ],
-  "total_files_processed": 2,
-  "total_files_found": 2,
-  "total_events": 350
-}
-```
-
-**Error Responses:**
-- `404 Not Found`: Folder doesn't exist
-- `400 Bad Request`: No JSON files found in folder
-- `500 Internal Server Error`: Server error
-
----
-
-### Filter Events by Tags
-
-#### `POST /events/filter-by-tags`
-
-Filter events that contain at least one of the specified tags.
-
-**Request Body:**
-```json
-{
-  "target_tags": ["Business", "Fed", "Economic Policy"],
-  "input_folder": "./data/res"
-}
-```
-
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| target_tags | array[string] | Yes | - | List of tags to filter by |
-| input_folder | string | No | ./data/res | Path to folder containing JSON files |
-
-**Example Request:**
+### Get Available Categories
 ```bash
-curl -X POST "http://localhost:8000/events/filter-by-tags" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "target_tags": ["Business", "Fed"],
-    "input_folder": "./data/res"
-  }'
+GET /api/categories
 ```
 
-**Response:**
-```json
+### Smart Search (Simplified)
+```bash
+POST /api/smart-search/simplified
+Content-Type: application/json
+
 {
-  "matched_events": [
-    {
-      "id": "event-123",
-      "title": "Federal Reserve Interest Rate Decision",
-      "tags": [
-        {"label": "Fed"},
-        {"label": "Economic Policy"}
-      ],
-      ...
-    }
-  ],
-  "total_events_processed": 500,
-  "total_matched": 45,
-  "files_processed": 3
+  "query": "Bitcoin price predictions",
+  "max_total_events": 25,
+  "min_confidence": 0.5,
+  "enable_ai_scoring": true
 }
 ```
 
-**Error Responses:**
-- `400 Bad Request`: Empty target_tags array or no JSON files found
-- `404 Not Found`: Folder doesn't exist
-- `500 Internal Server Error`: Server error
-
----
-
-## Data Format
-
-### Event Structure
-
-Events in JSON files should follow this structure:
-
+**Response (Signed with TEE Wallet):**
 ```json
 {
-  "id": "string",
-  "ticker": "string",
-  "slug": "string",
-  "title": "string",
-  "description": "string",
-  "startDate": "string",
-  "endDate": "string",
-  "tags": [
-    {
-      "label": "string",
-      "id": "string"
+  "data": {
+    "events": [
+      {
+        "id": "38001",
+        "title": "Bitcoin to hit $100k by Dec 2025?",
+        "description": "...",
+        "relevance_score": 95,
+        "relevance_reason": "Directly related to Bitcoin price predictions",
+        "category": "bitcoin",
+        "market_data": {...},
+        "dates": {...},
+        "metadata": {...}
+      }
+    ],
+    "count": 25,
+    "stats": {
+      "total_events": 25,
+      "total_scanned": 2712,
+      "match_rate": 0.92,
+      "matched_categories": [...],
+      "overall_confidence": 0.85
     }
-  ],
-  "markets": [],
-  ...
+  },
+  "signature": "0x1234567890abcdef...",
+  "wallet": "0xAbC123...",
+  "timestamp": "2025-10-11T01:23:45.678Z"
 }
 ```
 
-### Excluded Files
-
-The filter-by-tags endpoint automatically excludes these files:
-- `unique_tags.json`
-- `filtered-combined.json`
-- `filtered_by_tags.json`
-
----
-
-## Project Structure
+## Architecture
 
 ```
 polyhedg-polymarket-api/
 ├── app/
-│   ├── __init__.py
-│   ├── main.py              # FastAPI app & endpoints
-│   ├── models.py            # Pydantic models
+│   ├── main.py                 # FastAPI application
+│   ├── models.py               # Pydantic models
 │   ├── services/
-│   │   ├── __init__.py
-│   │   ├── events.py        # Event counting logic
-│   │   └── filters.py       # Filtering logic
-│   └── utils/
-│       ├── __init__.py
-│       └── file_utils.py    # File utilities
+│   │   ├── category_matcher.py    # AI category matching
+│   │   ├── relevance_scorer.py    # AI event scoring
+│   │   ├── event_prefilter.py     # Pre-filtering logic
+│   │   ├── event_transformer.py   # Event data transformation
+│   │   └── filters.py              # Event filtering
+│   └── prompts/
+│       └── system_prompt.txt   # LLM system prompt
 ├── data/
-│   └── res/                 # JSON data files
-├── count-events.py          # Original script
-├── filter-by-tag.py         # Original script
-├── filter-script.py         # Original script
-├── get-tags.py              # Original script
-├── requirements.txt
-└── README.md
+│   └── res/
+│       ├── unique_tags.json    # Available categories
+│       └── combined-and-filtered.json  # Event data
+├── Dockerfile              # Docker build config
+├── Caddyfile              # Caddy TLS config
+├── requirements.txt       # Python dependencies
+└── .env                   # Environment variables (not in git)
 ```
 
----
+## Environment Variables
+
+```bash
+# Required
+OPENAI_API_KEY=sk-...
+MNEMONIC="your twelve word mnemonic phrase"
+
+# Optional
+PORT=80                    # Server port (default: 80)
+DOMAIN=localhost           # Domain for TLS (Caddy)
+APP_PORT=80               # Internal app port (Caddy)
+```
 
 ## Development
 
 ### Adding New Endpoints
 
-1. Add request/response models in `app/models.py`
-2. Implement business logic in `app/services/`
-3. Create endpoint in `app/main.py`
-4. Update this README
+1. Add route to `app/main.py`
+2. Define request/response models in `app/models.py`
+3. Add business logic in `app/services/`
 
-### Running Tests
+### Updating Categories
+
+Categories are loaded from `data/res/unique_tags.json`. To reload without restart:
 
 ```bash
-pytest
+POST /api/categories/reload
 ```
 
----
+## Deployment Notes
 
-## CORS Configuration
+### TLS/HTTPS
 
-CORS is enabled for all origins by default. To restrict access, modify the CORS middleware in `app/main.py`:
+The Caddyfile expects TLS certificates at:
+- `/run/tls/fullchain.pem`
+- `/run/tls/privkey.pem`
 
-```python
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["https://yourdomain.com"],  # Specific origins
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-```
+These are typically provided by the TEE platform's `tls-keygen` service.
 
----
+### Security Headers
 
-## Error Handling
+Caddy automatically adds:
+- X-Content-Type-Options: nosniff
+- X-Frame-Options: DENY
+- X-XSS-Protection: 1; mode=block
+- Referrer-Policy: strict-origin-when-cross-origin
 
-All endpoints return structured error responses:
+### Health Checks
 
-```json
-{
-  "detail": "Error message description"
-}
-```
-
-Common HTTP status codes:
-- `200 OK`: Successful request
-- `400 Bad Request`: Invalid input
-- `404 Not Found`: Resource not found
-- `500 Internal Server Error`: Server error
-
----
-
-## Dependencies
-
-- **FastAPI**: Modern web framework for building APIs
-- **Uvicorn**: ASGI server for running FastAPI
-- **Pydantic**: Data validation using Python type hints
-
-See `requirements.txt` for specific versions.
-
----
+The `/health` endpoint is available on both HTTP (port 80) and HTTPS.
 
 ## License
 
-[Add your license information here]
-
----
-
-## Contributing
-
-[Add contributing guidelines here]
-
----
-
-## Support
-
-For issues and questions, please open an issue on GitHub.
+MIT

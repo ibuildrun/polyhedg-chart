@@ -1,24 +1,33 @@
-# Environment variables
-.env
-.env.local
-
 # Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
-*.egg
-*.egg-info/
-dist/
-build/
 .Python
-env/
-venv/
-ENV/
-pip-log.txt
-pip-delete-this-directory.txt
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
 
-# IDEs
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv
+
+# IDE
 .vscode/
 .idea/
 *.swp
@@ -26,17 +35,24 @@ pip-delete-this-directory.txt
 *~
 .DS_Store
 
-# Jupyter Notebook
-.ipynb_checkpoints
+# Environment variables
+.env
+.env.local
+.env.*.local
 
 # Testing
 .pytest_cache/
 .coverage
 htmlcov/
+*.cover
+.hypothesis/
 
 # Logs
 *.log
 
-# Data (optional - uncomment if you don't want to track data files)
+# Data files (optional, uncomment if you don't want to track data)
 # data/
 
+# Temporary files
+*.tmp
+.cache/
