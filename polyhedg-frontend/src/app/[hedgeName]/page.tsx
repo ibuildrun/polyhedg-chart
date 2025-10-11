@@ -119,7 +119,7 @@ export default function HedgePage() {
       console.log("📤 Request body:", JSON.stringify(requestBody));
       
       // Use deployed API endpoint
-      const response = await fetch("http://34.182.66.241/api/smart-search/simplified", {
+      const response = await fetch("https://34.182.66.241/api/smart-search/simplified", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
