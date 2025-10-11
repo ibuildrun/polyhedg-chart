@@ -48,8 +48,9 @@ async def create_batch_polymarket_orders(request: BatchOrderRequest):
     print(f"Received request for {len(request.orders)} orders. Dry Run: {request.dry_run}")
     if not all([PRIVATE_KEY, FUNDER]):
         raise HTTPException(status_code=500, detail="Server configuration error: Credentials not set.")
-            try:
-                client = ClobClient("https://clob.polymarket.com", key=PRIVATE_KEY, chain_id=137, signature_type=2, funder=FUNDER)        client.set_api_creds(client.create_or_derive_api_creds())
+    try:
+        client = ClobClient("https://clob.polymarket.com", key=PRIVATE_KEY, chain_id=137, signature_type=2, funder=FUNDER)
+        client.set_api_creds(client.create_or_derive_api_creds())
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to connect to Polymarket: {e}")
     
