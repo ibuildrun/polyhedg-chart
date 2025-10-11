@@ -68,6 +68,11 @@ export default function HedgePage() {
   const graphRef = useRef<any>(null);
   const [apiError, setApiError] = useState<string | null>(null);
   const [isFetchingEvents, setIsFetchingEvents] = useState(false);
+  const [teeSignature, setTeeSignature] = useState<{
+    signature: string | null;
+    wallet: string | null;
+    timestamp: string | null;
+  }>({ signature: null, wallet: null, timestamp: null });
   
   // Configure force simulation after mount
   useEffect(() => {
@@ -145,6 +150,13 @@ export default function HedgePage() {
         signed: !!signature,
         wallet: wallet,
         timestamp: timestamp
+      });
+      
+      // Store TEE signature info
+      setTeeSignature({
+        signature: signature || null,
+        wallet: wallet || null,
+        timestamp: timestamp || null
       });
       
       // Sort events by relevance_score to find top 5
@@ -680,6 +692,40 @@ export default function HedgePage() {
               {apiError && (
                 <div className="error-indicator glass-card">
                   <span>⚠️ {apiError}</span>
+                </div>
+              )}
+              
+              {teeSignature.signature && (
+                <div className="tee-signature-badge glass-card">
+                  <div className="tee-badge-header">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                      <path d="M9 12l2 2 4-4"></path>
+                    </svg>
+                    <span className="tee-badge-title">TEE Verified</span>
+                  </div>
+                  <div className="tee-signature-details">
+                    <div className="tee-detail-row">
+                      <span className="tee-label">Wallet:</span>
+                      <span className="tee-value" title={teeSignature.wallet || ''}>
+                        {teeSignature.wallet?.slice(0, 6)}...{teeSignature.wallet?.slice(-4)}
+                      </span>
+                    </div>
+                    <div className="tee-detail-row">
+                      <span className="tee-label">Signature:</span>
+                      <span className="tee-value" title={teeSignature.signature || ''}>
+                        {teeSignature.signature?.slice(0, 10)}...
+                      </span>
+                    </div>
+                    {teeSignature.timestamp && (
+                      <div className="tee-detail-row">
+                        <span className="tee-label">Time:</span>
+                        <span className="tee-value">
+                          {new Date(teeSignature.timestamp).toLocaleTimeString()}
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
               
