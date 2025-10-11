@@ -1,18 +1,18 @@
-
 import requests
 import json
 
-# This script tests the full order lifecycle using Python.
-# It places one live order and then immediately cancels it.
+# This script is pre-configured to test the full order lifecycle on the
+# "Fed rate hike in 2025?" market.
+# It will place one live order and then immediately cancel it.
 
 # --- Configuration ---
-# IMPORTANT: Change these values before running.
 
-# 1. The domain of your running API server.
+# The domain of your running API server.
 API_BASE_URL = 'http://127.0.0.1:8000' # Use this if running on the same machine
 
-# 2. A valid Token ID from Polymarket for the market you want to test.
-TEST_TOKEN_ID = '<A_REAL_TOKEN_ID>'
+# This is the "Yes" token ID for the "Fed rate hike in 2025?" market.
+# We will place a SELL order on this token to bet "No".
+TEST_TOKEN_ID = '60487116984468020978247225474488676749601001829886755968952521846780452448915'
 
 
 # --- Main Test Function ---
@@ -20,18 +20,16 @@ TEST_TOKEN_ID = '<A_REAL_TOKEN_ID>'
 def run_place_and_cancel_test():
     """Runs the full place-and-cancel test sequence."""
 
-    if TEST_TOKEN_ID == '<A_REAL_TOKEN_ID>':
-        print('❌ Please update the TEST_TOKEN_ID variable in this script before running.')
-        return
-
-    print('--- Step 1: Placing a single live order... ---')
+    print(f'--- Step 1: Placing a single live order for token {TEST_TOKEN_ID[:15]}... ---')
 
     place_order_payload = {
         "orders": [
             {
                 "token_id": TEST_TOKEN_ID,
-                "price": 0.98, # High price = low collateral
-                "size": 0.10   # Small size = low collateral
+                # The current "bestAsk" is ~0.027. We set our price higher (0.10)
+                # to ensure the order does NOT get filled immediately.
+                "price": 0.10,
+                "size": 0.10   # A small 10-cent order
             }
         ],
         "dry_run": False
@@ -51,7 +49,6 @@ def run_place_and_cancel_test():
             print(json.dumps(place_result, indent=2))
             return
 
-        # Extract the orderId from the successful response
         order_id_to_cancel = place_result["batch_results"][0]["polymarket_response"]["orderId"]
         print(f"✅ Successfully placed order. Order ID: {order_id_to_cancel}")
 
