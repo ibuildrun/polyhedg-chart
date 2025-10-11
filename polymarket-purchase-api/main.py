@@ -19,6 +19,7 @@ FUNDER = os.environ.get("POLYMARKET_FUNDER")
 # --- Polygon/Web3 Setup ---
 POLYGON_RPC = "https://polygon-rpc.com"
 USDC_ADDRESS = "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"  # USDC on Polygon (native)
+USDC_E_ADDRESS = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"  # USDC.e (bridged from Ethereum)
 # Backup RPC: "https://polygon-mainnet.g.alchemy.com/v2/demo"
 
 # Standard ERC20 ABI (only the functions we need)
@@ -110,6 +111,7 @@ async def get_wallet_info():
 async def check_balances():
     """
     Checks USDC balances for both your private key address and FUNDER address.
+    Checks both native USDC and bridged USDC.e tokens.
     """
     if not all([PRIVATE_KEY, FUNDER]):
         raise HTTPException(status_code=500, detail="Server configuration error: Credentials not set.")
@@ -123,18 +125,30 @@ async def check_balances():
         account = Account.from_key(PRIVATE_KEY)
         wallet_address = account.address
 
-        # Connect to USDC contract
+        # Connect to both USDC contracts
         usdc_contract = w3.eth.contract(address=Web3.to_checksum_address(USDC_ADDRESS), abi=ERC20_ABI)
+        usdc_e_contract = w3.eth.contract(address=Web3.to_checksum_address(USDC_E_ADDRESS), abi=ERC20_ABI)
 
-        # Get balances
-        wallet_balance = usdc_contract.functions.balanceOf(wallet_address).call()
-        funder_balance = usdc_contract.functions.balanceOf(Web3.to_checksum_address(FUNDER)).call()
+        # Get native USDC balances
+        wallet_usdc = usdc_contract.functions.balanceOf(wallet_address).call()
+        funder_usdc = usdc_contract.functions.balanceOf(Web3.to_checksum_address(FUNDER)).call()
+
+        # Get USDC.e balances
+        wallet_usdc_e = usdc_e_contract.functions.balanceOf(wallet_address).call()
+        funder_usdc_e = usdc_e_contract.functions.balanceOf(Web3.to_checksum_address(FUNDER)).call()
+
+        # Get MATIC balance
+        wallet_matic = w3.eth.get_balance(wallet_address)
 
         return {
             "wallet_address": wallet_address,
-            "wallet_balance_usdc": float(wallet_balance) / 1e6,
+            "wallet_native_usdc": float(wallet_usdc) / 1e6,
+            "wallet_bridged_usdc_e": float(wallet_usdc_e) / 1e6,
+            "wallet_matic": float(wallet_matic) / 1e18,
             "funder_address": FUNDER,
-            "funder_balance_usdc": float(funder_balance) / 1e6,
+            "funder_native_usdc": float(funder_usdc) / 1e6,
+            "funder_bridged_usdc_e": float(funder_usdc_e) / 1e6,
+            "note": "If you have USDC.e, you need to swap it to native USDC or use the deposit-usdc-e endpoint",
             "polygon_scan_wallet": f"https://polygonscan.com/address/{wallet_address}",
             "polygon_scan_funder": f"https://polygonscan.com/address/{FUNDER}"
         }
@@ -142,10 +156,11 @@ async def check_balances():
         raise HTTPException(status_code=500, detail=f"Failed to check balances: {e}")
 
 @app.post("/deposit-to-polymarket", tags=["Account"])
-async def deposit_to_polymarket(amount: float):
+async def deposit_to_polymarket(amount: float, use_usdc_e: bool = False):
     """
     Transfers USDC from your private key wallet to your Polymarket FUNDER address.
     This deposits funds into your Polymarket trading account.
+    Set use_usdc_e=true to use bridged USDC.e instead of native USDC.
     """
     if not all([PRIVATE_KEY, FUNDER]):
         raise HTTPException(status_code=500, detail="Server configuration error: Credentials not set.")
@@ -162,8 +177,12 @@ async def deposit_to_polymarket(amount: float):
         account = Account.from_key(PRIVATE_KEY)
         wallet_address = account.address
 
+        # Choose the right USDC contract
+        usdc_address = USDC_E_ADDRESS if use_usdc_e else USDC_ADDRESS
+        token_name = "USDC.e" if use_usdc_e else "USDC"
+
         # Connect to USDC contract
-        usdc_contract = w3.eth.contract(address=Web3.to_checksum_address(USDC_ADDRESS), abi=ERC20_ABI)
+        usdc_contract = w3.eth.contract(address=Web3.to_checksum_address(usdc_address), abi=ERC20_ABI)
 
         # Check balance
         wallet_balance = usdc_contract.functions.balanceOf(wallet_address).call()
@@ -172,7 +191,7 @@ async def deposit_to_polymarket(amount: float):
         if wallet_balance_usdc < amount:
             raise HTTPException(
                 status_code=400,
-                detail=f"Insufficient balance. You have {wallet_balance_usdc} USDC but tried to deposit {amount} USDC"
+                detail=f"Insufficient {token_name} balance. You have {wallet_balance_usdc} {token_name} but tried to deposit {amount} {token_name}"
             )
 
         # Build transfer transaction
@@ -202,7 +221,8 @@ async def deposit_to_polymarket(amount: float):
 
         return {
             "status": "success",
-            "amount_deposited_usdc": amount,
+            "token_type": token_name,
+            "amount_deposited": amount,
             "from_address": wallet_address,
             "to_address": FUNDER,
             "transaction_hash": tx_hash_hex,
