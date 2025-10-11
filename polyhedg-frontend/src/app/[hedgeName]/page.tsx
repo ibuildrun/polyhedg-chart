@@ -1,10 +1,15 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useState, useEffect } from "react";
-import ReactFlow, { Background, Controls, MiniMap } from "reactflow";
-import type { Node, Edge } from "reactflow";
-import "reactflow/dist/style.css";
+import { useState, useEffect, useCallback, useRef } from "react";
+import dynamic from "next/dynamic";
+// @ts-ignore - d3-force types not required for build
+import * as d3 from "d3-force";
+
+// Dynamically import ForceGraph2D to avoid SSR issues
+const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
+  ssr: false,
+});
 
 interface HedgeData {
   id: string;
@@ -27,10 +32,23 @@ interface NodeData {
 
 interface GraphNode {
   id: string;
-  position: { x: number; y: number };
-  data: { label: string; nodeId: string };
-  style: any;
-  selected: boolean;
+  name: string;
+  val: number;
+  color: string;
+  nodeData: NodeData;
+  x?: number;
+  y?: number;
+  vx?: number;
+  vy?: number;
+  fx?: number;
+  fy?: number;
+}
+
+interface GraphLink {
+  source: string;
+  target: string;
+  color: string;
+  width: number;
 }
 
 export default function HedgePage() {
@@ -40,9 +58,24 @@ export default function HedgePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isExecuting, setIsExecuting] = useState(false);
   const [nodes, setNodes] = useState<NodeData[]>([]);
-  const [graphNodes, setGraphNodes] = useState<GraphNode[]>([]);
-  const [graphEdges, setGraphEdges] = useState<Edge[]>([]);
+  const [graphData, setGraphData] = useState<{
+    nodes: GraphNode[];
+    links: GraphLink[];
+  }>({ nodes: [], links: [] });
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null);
+  const graphRef = useRef<any>(null);
+  
+  // Configure force simulation after mount
+  useEffect(() => {
+    if (graphRef.current) {
+      // Configure forces to spread nodes far apart with larger collision radius
+      graphRef.current.d3Force("charge", d3.forceManyBody().strength(-2000));
+      graphRef.current.d3Force("link", d3.forceLink().distance(350).strength(0.2));
+      graphRef.current.d3Force("center", d3.forceCenter().strength(0.015));
+      graphRef.current.d3Force("collision", d3.forceCollide().radius(120));
+    }
+  }, [graphData]);
 
   // Profit stats data
   const profitStats = {
@@ -97,171 +130,68 @@ export default function HedgePage() {
   };
 
   const centerOnNode = (nodeId: string) => {
-    // Find the graph node and center on it
-    const graphNode = graphNodes.find((gn) => gn.data.nodeId === nodeId);
-    if (graphNode) {
-      // This would trigger React Flow to center on the node
-      // Implementation depends on React Flow's API
-      console.log(`Centering on node: ${nodeId}`);
+    const graphNode = graphData.nodes.find((gn) => gn.id === nodeId);
+    if (graphNode && graphRef.current) {
+      graphRef.current.centerAt(graphNode.x, graphNode.y, 1000);
+      graphRef.current.zoom(2, 1000);
     }
   };
 
-  // Generate graph nodes and edges from node data
+  // Generate graph data for react-force-graph
   const generateGraphData = (nodeData: NodeData[]) => {
-    // Create contract nodes with randomized positions for natural graph layout
-    const newGraphNodes: GraphNode[] = nodeData.map((node, index) => {
-      // Generate random positions within a reasonable area
-      const minX = 100;
-      const maxX = 800;
-      const minY = 100;
-      const maxY = 600;
+    const newGraphNodes: GraphNode[] = nodeData.map((node) => {
+      // Determine node size based on size property - much larger for better visibility
+      const sizeMap = { small: 12, medium: 16, large: 20 };
+      const nodeSize = sizeMap[node.size];
 
-      // Add some spacing to avoid overlap
-      const x = minX + ((index * 120) % (maxX - minX)) + Math.random() * 50;
-      const y = minY + Math.floor(index / 6) * 120 + Math.random() * 50;
+      // Determine color based on selection and type
+      let color = "rgba(168, 85, 247, 0.8)"; // Default purple
+      if (node.selected) {
+        color = "rgba(168, 85, 247, 1)"; // Bright purple for selected
+      } else {
+        // Use different colors based on type when not selected
+        if (node.type === "positive") color = "rgba(34, 197, 94, 0.7)";
+        else if (node.type === "negative") color = "rgba(239, 68, 68, 0.7)";
+        else color = "rgba(156, 163, 175, 0.7)";
+      }
 
       return {
-        id: `graph-${node.id}`,
-        type: "custom",
-        position: { x, y },
-        data: {
-          label: node.title,
-          nodeId: node.id,
-        },
-        style: {
-          background: node.selected
-            ? "rgba(168, 85, 247, 0.2)"
-            : "rgba(255, 255, 255, 0.05)",
-          border: node.selected
-            ? "2px solid #a855f7"
-            : "1px solid rgba(255, 255, 255, 0.2)",
-          borderRadius: "8px",
-          padding: "10px",
-          fontSize: "12px",
-          fontWeight: "500",
-          color: "#ffffff",
-          boxShadow: node.selected
-            ? "0 0 20px rgba(168, 85, 247, 0.5)"
-            : "none",
-          width: "120px",
-          height: "60px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          textAlign: "center",
-        },
-        selected: node.selected,
+        id: node.id,
+        name: node.title,
+        val: nodeSize,
+        color: color,
+        nodeData: node,
       };
     });
 
-    // Generate edges based on node connections
-    const newGraphEdges: Edge[] = [];
-
-    // Create simple test edges first - try different approaches
-    if (newGraphNodes.length >= 2) {
-      newGraphEdges.push({
-        id: "test-edge-1",
-        source: newGraphNodes[0].id,
-        target: newGraphNodes[1].id,
-        type: "default",
-        style: {
-          stroke: "#ff0000",
-          strokeWidth: 10,
-        },
-      });
-    }
-
-    if (newGraphNodes.length >= 3) {
-      newGraphEdges.push({
-        id: "test-edge-2",
-        source: newGraphNodes[1].id,
-        target: newGraphNodes[2].id,
-        type: "default",
-        style: {
-          stroke: "#00ff00",
-          strokeWidth: 10,
-        },
-      });
-    }
-
-    if (newGraphNodes.length >= 4) {
-      newGraphEdges.push({
-        id: "test-edge-3",
-        source: newGraphNodes[0].id,
-        target: newGraphNodes[3].id,
-        type: "default",
-        style: {
-          stroke: "#0000ff",
-          strokeWidth: 10,
-        },
-      });
-    }
-
-    // Try even more simple edges
-    if (newGraphNodes.length >= 5) {
-      newGraphEdges.push({
-        id: "test-edge-4",
-        source: newGraphNodes[2].id,
-        target: newGraphNodes[4].id,
-        style: {
-          stroke: "#ffff00",
-          strokeWidth: 15,
-        },
-      });
-    }
-
-    // Add edges from each node to its connected nodes
+    // Generate links based on node connections
+    const newGraphLinks: GraphLink[] = [];
     nodeData.forEach((node) => {
       node.connections.forEach((connectedNodeId) => {
-        // Check if the connected node exists in our data
         const connectedNode = nodeData.find((n) => n.id === connectedNodeId);
         if (connectedNode) {
-          // Create edge with unique ID
-          const edgeId = `edge-${node.id}-${connectedNodeId}`;
-          const reverseEdgeId = `edge-${connectedNodeId}-${node.id}`;
+          // Check if link already exists in either direction
+          const linkExists = newGraphLinks.some(
+            (link) =>
+              (link.source === node.id && link.target === connectedNodeId) ||
+              (link.source === connectedNodeId && link.target === node.id),
+          );
 
-          // Avoid duplicate edges
-          if (
-            !newGraphEdges.find(
-              (e) => e.id === edgeId || e.id === reverseEdgeId,
-            )
-          ) {
-            newGraphEdges.push({
-              id: edgeId,
-              source: `graph-${node.id}`,
-              target: `graph-${connectedNodeId}`,
-              type: "straight",
-              style: {
-                stroke: "#ffffff",
-                strokeWidth: 3,
-              },
+          if (!linkExists) {
+            newGraphLinks.push({
+              source: node.id,
+              target: connectedNodeId,
+              color: node.selected || connectedNode.selected 
+                ? "rgba(168, 85, 247, 0.5)" 
+                : "rgba(168, 85, 247, 0.25)",
+              width: node.selected || connectedNode.selected ? 3 : 2,
             });
           }
         }
       });
     });
 
-    console.log("Generated nodes:", newGraphNodes.length);
-    console.log("Generated edges:", newGraphEdges.length);
-    console.log("Node data:", nodeData);
-    console.log("Edges:", newGraphEdges);
-    console.log("First few nodes:", newGraphNodes.slice(0, 3));
-    console.log("First few edges:", newGraphEdges.slice(0, 3));
-
-    // Force a simple test
-    if (newGraphNodes.length >= 2) {
-      console.log(
-        "Testing edge between:",
-        newGraphNodes[0].id,
-        "and",
-        newGraphNodes[1].id,
-      );
-      console.log("Node 0 position:", newGraphNodes[0].position);
-      console.log("Node 1 position:", newGraphNodes[1].position);
-    }
-
-    setGraphNodes(newGraphNodes);
-    setGraphEdges(newGraphEdges);
+    setGraphData({ nodes: newGraphNodes, links: newGraphLinks });
   };
 
   // Initialize nodes data
@@ -389,21 +319,118 @@ export default function HedgePage() {
   ];
 
   // Handle node click in graph
-  const handleNodeClick = (event: any, node: any) => {
-    const nodeId = node.data.nodeId;
-    setSelectedNodeId(selectedNodeId === nodeId ? null : nodeId);
-  };
+  const handleNodeClick = useCallback(
+    (node: any) => {
+      setSelectedNodeId(selectedNodeId === node.id ? null : node.id);
+    },
+    [selectedNodeId],
+  );
 
-  // Custom node component
-  const CustomNode = ({ data, selected }: { data: any; selected: boolean }) => {
-    return (
-      <div className="custom-node">
-        <div className="node-content">
-          <div className="node-label">{data.label}</div>
-        </div>
-      </div>
-    );
-  };
+  // Handle node hover
+  const handleNodeHover = useCallback((node: any) => {
+    setHoveredNode(node);
+  }, []);
+
+  // Custom node canvas painting
+  const paintNode = useCallback(
+    (node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
+      // Safety check - ensure node has valid coordinates
+      if (!node.x || !node.y || !isFinite(node.x) || !isFinite(node.y)) {
+        return;
+      }
+
+      const label = node.name;
+      const fontSize = 14 / globalScale;
+      const nodeRelSize = 3;
+
+      // Draw node circle with glow effect
+      const isSelected = node.nodeData.selected;
+      const isHovered = hoveredNode?.id === node.id;
+
+      const radius = nodeRelSize * node.val;
+      const x = node.x;
+      const y = node.y;
+
+      // Draw outer glow for all nodes
+      ctx.beginPath();
+      ctx.arc(x, y, radius + 8, 0, 2 * Math.PI);
+      const gradient = ctx.createRadialGradient(
+        x,
+        y,
+        radius,
+        x,
+        y,
+        radius + 8,
+      );
+      
+      if (isSelected) {
+        gradient.addColorStop(0, "rgba(168, 85, 247, 0.4)");
+        gradient.addColorStop(1, "rgba(168, 85, 247, 0)");
+      } else if (isHovered) {
+        gradient.addColorStop(0, "rgba(168, 85, 247, 0.25)");
+        gradient.addColorStop(1, "rgba(168, 85, 247, 0)");
+      } else {
+        gradient.addColorStop(0, "rgba(168, 85, 247, 0.15)");
+        gradient.addColorStop(1, "rgba(168, 85, 247, 0)");
+      }
+      ctx.fillStyle = gradient;
+      ctx.fill();
+
+      // Draw main node circle with inner gradient
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, 2 * Math.PI);
+      const nodeGradient = ctx.createRadialGradient(
+        x - radius * 0.3,
+        y - radius * 0.3,
+        0,
+        x,
+        y,
+        radius,
+      );
+      nodeGradient.addColorStop(0, node.color);
+      nodeGradient.addColorStop(1, node.color.replace("0.7)", "0.5)").replace("0.8)", "0.6)").replace("1)", "0.8)"));
+      ctx.fillStyle = nodeGradient;
+      ctx.fill();
+
+      // Draw glassmorphic border
+      ctx.strokeStyle = isSelected
+        ? "rgba(255, 255, 255, 0.9)"
+        : "rgba(255, 255, 255, 0.4)";
+      ctx.lineWidth = isSelected ? 3 / globalScale : 2 / globalScale;
+      ctx.stroke();
+
+      // Draw inner highlight
+      ctx.beginPath();
+      ctx.arc(
+        x - radius * 0.25,
+        y - radius * 0.25,
+        radius * 0.3,
+        0,
+        Math.PI * 2,
+      );
+      ctx.fillStyle = "rgba(255, 255, 255, 0.2)";
+      ctx.fill();
+
+      // Draw label with shadow
+      ctx.font = `600 ${fontSize}px Sans-Serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      
+      // Label shadow
+      ctx.shadowColor = "rgba(0, 0, 0, 0.6)";
+      ctx.shadowBlur = 4;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 2;
+      
+      ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+      ctx.fillText(label, x, y + radius + 16);
+      
+      // Reset shadow
+      ctx.shadowColor = "transparent";
+      ctx.shadowBlur = 0;
+    },
+    [hoveredNode],
+  );
 
   useEffect(() => {
     // Get hedge data from sessionStorage or API
@@ -475,12 +502,12 @@ export default function HedgePage() {
   return (
     <div className="hedge-page">
       <div className="hedge-layout">
-        {/* Full-width React Flow graph */}
-        <div className="flow-container">
-          <div className="flow-header">
+        {/* Full-width Force Graph */}
+        <div className="graph-container">
+          <div className="graph-header">
             <div className="button-group">
               <button
-                className={`execute-button ${isExecuting ? "executing" : ""}`}
+                className={`execute-button glass-button ${isExecuting ? "executing" : ""}`}
                 onClick={handleExecute}
                 disabled={isExecuting}
               >
@@ -509,7 +536,10 @@ export default function HedgePage() {
               </button>
 
               {isExecuting && (
-                <button className="stop-button" onClick={handleStop}>
+                <button
+                  className="stop-button glass-button"
+                  onClick={handleStop}
+                >
                   <svg
                     width="16"
                     height="16"
@@ -527,24 +557,41 @@ export default function HedgePage() {
               )}
             </div>
           </div>
-          <ReactFlow
-            nodes={graphNodes}
-            edges={graphEdges}
-            onNodeClick={handleNodeClick}
-            fitView={false}
-            className="hedge-flow"
-            nodeTypes={{
-              custom: CustomNode,
-            }}
-            defaultViewport={{ x: 0, y: 0, zoom: 1 }}
-            proOptions={{ hideAttribution: true }}
-          >
-            <Background />
-          </ReactFlow>
+
+          <div className="graph-wrapper">
+            <ForceGraph2D
+              ref={graphRef}
+              graphData={graphData}
+              nodeLabel={(node: any) => node.name}
+              nodeVal={(node: any) => node.val}
+              nodeColor={(node: any) => node.color}
+              nodeCanvasObject={paintNode}
+              nodeCanvasObjectMode={() => "replace"}
+              onNodeClick={handleNodeClick}
+              onNodeHover={handleNodeHover}
+              linkColor={(link: any) => link.color}
+              linkWidth={(link: any) => link.width}
+              linkDirectionalParticles={3}
+              linkDirectionalParticleWidth={3}
+              linkDirectionalParticleSpeed={0.005}
+              linkDirectionalParticleColor={(link: any) =>
+                "rgba(168, 85, 247, 0.8)"
+              }
+              backgroundColor="rgba(0, 0, 0, 0)"
+              cooldownTicks={150}
+              d3VelocityDecay={0.3}
+              d3AlphaDecay={0.015}
+              d3AlphaMin={0.001}
+              warmupTicks={50}
+              enableZoomInteraction={true}
+              enablePanInteraction={true}
+              enableNodeDrag={true}
+            />
+          </div>
 
           {/* Profit Stats Card - Bottom Left */}
           {isExecuting && (
-            <div className="profit-stats-card">
+            <div className="profit-stats-card glass-card">
               <div className="profit-header">
                 <h4>Live Position</h4>
                 <span className="execution-time">
