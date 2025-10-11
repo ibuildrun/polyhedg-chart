@@ -28,6 +28,7 @@ interface NodeData {
   selected: boolean;
   size: "small" | "medium" | "large";
   connections: string[];
+  fullData?: any; // Store complete API response for sidebar
 }
 
 interface GraphNode {
@@ -65,6 +66,8 @@ export default function HedgePage() {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null);
   const graphRef = useRef<any>(null);
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [isFetchingEvents, setIsFetchingEvents] = useState(false);
   
   // Configure force simulation after mount
   useEffect(() => {
@@ -97,6 +100,66 @@ export default function HedgePage() {
     setIsExecuting(false);
     // Remove execution state from sessionStorage
     sessionStorage.removeItem("hedgeExecuting");
+  };
+
+  // Fetch events from API
+  const fetchEventsFromAPI = async (query: string) => {
+    setIsFetchingEvents(true);
+    setApiError(null);
+    
+    try {
+      const response = await fetch("http://localhost:8000/api/smart-search/simplified", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ query }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`API error: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      
+      // Transform API events to NodeData format with connections
+      const transformedEvents: NodeData[] = data.events.map((event: any, index: number) => {
+        // Create connections based on similar categories
+        const connections = data.events
+          .filter((e: any, i: number) => 
+            i !== index && 
+            e.category === event.category &&
+            e.id !== event.id
+          )
+          .slice(0, 3) // Limit to 3 connections per node
+          .map((e: any) => e.id);
+
+        return {
+          id: event.id,
+          title: event.title,
+          value: event.value,
+          change: event.change || "0%",
+          type: event.type as "positive" | "negative" | "neutral",
+          selected: event.market_data.yes_percentage > 55, // Auto-select high probability events
+          size: event.size as "small" | "medium" | "large",
+          connections: connections,
+          // Store full event data for sidebar display
+          fullData: event,
+        };
+      });
+
+      // Update nodes with API data
+      setNodes(transformedEvents);
+      sessionStorage.setItem("hedgeNodes", JSON.stringify(transformedEvents));
+      
+      return transformedEvents;
+    } catch (error) {
+      console.error("Error fetching events:", error);
+      setApiError(error instanceof Error ? error.message : "Failed to fetch events");
+      return null;
+    } finally {
+      setIsFetchingEvents(false);
+    }
   };
 
   // Node management functions
@@ -448,19 +511,37 @@ export default function HedgePage() {
       sessionStorage.getItem("hedgeExecuting") === "true";
     setIsExecuting(isCurrentlyExecuting);
 
-    // Initialize nodes - load from session storage or use defaults
-    const storedNodes = sessionStorage.getItem("hedgeNodes");
-    let initialNodesData;
-    if (storedNodes) {
-      initialNodesData = JSON.parse(storedNodes);
-    } else {
-      initialNodesData = initializeNodes();
-      sessionStorage.setItem("hedgeNodes", JSON.stringify(initialNodesData));
-    }
-    setNodes(initialNodesData);
-    generateGraphData(initialNodesData);
+    // Initialize nodes - try to fetch from API first
+    const initializeData = async () => {
+      // Clear cached data on fresh load to force API call
+      sessionStorage.removeItem("hedgeNodes");
+      
+      // Default query based on hedge name or description
+      let query = displayName || hedgeName;
+      if (hedgeData?.description) {
+        query = hedgeData.description;
+      }
+      
+      console.log("Initializing with query:", query);
+      
+      // Always try to fetch from API first
+      const apiData = await fetchEventsFromAPI(query);
+      if (apiData && apiData.length > 0) {
+        console.log("API data loaded successfully:", apiData.length, "events");
+        generateGraphData(apiData);
+      } else {
+        console.log("API failed or no data, using mock data");
+        // Fall back to mock data if API fails
+        const mockData = initializeNodes();
+        setNodes(mockData);
+        sessionStorage.setItem("hedgeNodes", JSON.stringify(mockData));
+        generateGraphData(mockData);
+      }
+      
+      setIsLoading(false);
+    };
 
-    setIsLoading(false);
+    initializeData();
   }, [hedgeName]);
 
   // Update graph when nodes change
@@ -506,6 +587,45 @@ export default function HedgePage() {
         <div className="graph-container">
           <div className="graph-header">
             <div className="button-group">
+              {isFetchingEvents && (
+                <div className="fetch-indicator glass-card">
+                  <div className="spinner"></div>
+                  <span>Loading events...</span>
+                </div>
+              )}
+              {apiError && (
+                <div className="error-indicator glass-card">
+                  <span>⚠️ {apiError}</span>
+                </div>
+              )}
+              
+              <button
+                className="refresh-button glass-button"
+                onClick={() => {
+                  if (hedgeData?.description) {
+                    fetchEventsFromAPI(hedgeData.description);
+                  }
+                }}
+                disabled={isFetchingEvents}
+                title="Refresh events from API"
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className={isFetchingEvents ? "spinning" : ""}
+                >
+                  <polyline points="23 4 23 10 17 10"></polyline>
+                  <polyline points="1 20 1 14 7 14"></polyline>
+                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                </svg>
+              </button>
+              
               <button
                 className={`execute-button glass-button ${isExecuting ? "executing" : ""}`}
                 onClick={handleExecute}
@@ -635,6 +755,7 @@ export default function HedgePage() {
               // Show selected node details
               (() => {
                 const selectedNode = nodes.find((n) => n.id === selectedNodeId);
+                const apiData = selectedNode?.fullData;
                 return selectedNode ? (
                   <div className="market-details">
                     <div className="market-header">
@@ -683,39 +804,63 @@ export default function HedgePage() {
                     <div className="market-dates">
                       <div className="date-row">
                         <span className="date-label">Start Date</span>
-                        <span className="date-value">Jan 15, 2024</span>
+                        <span className="date-value">
+                          {apiData?.dates?.start_date 
+                            ? new Date(apiData.dates.start_date).toLocaleDateString()
+                            : "Jan 15, 2024"}
+                        </span>
                       </div>
                       <div className="date-row">
                         <span className="date-label">End Date</span>
-                        <span className="date-value">Dec 31, 2024</span>
+                        <span className="date-value">
+                          {apiData?.dates?.end_date 
+                            ? new Date(apiData.dates.end_date).toLocaleDateString()
+                            : "Dec 31, 2024"}
+                        </span>
                       </div>
                     </div>
 
                     <div className="market-description">
                       <p>
-                        Will {selectedNode.title.toLowerCase()} occur before the
-                        end of 2024? This prediction market allows traders to
-                        bet on the outcome of this event.
+                        {apiData?.description || 
+                          `Will ${selectedNode.title.toLowerCase()} occur before the end of 2024? This prediction market allows traders to bet on the outcome of this event.`}
                       </p>
                     </div>
 
-                    <div className="market-image">
-                      <img
-                        src={`https://picsum.photos/400/200?random=${selectedNodeId}`}
-                        alt={selectedNode.title}
-                        className="market-img"
-                      />
-                    </div>
+                    {apiData?.metadata?.image_url && (
+                      <div className="market-image">
+                        <img
+                          src={apiData.metadata.image_url}
+                          alt={selectedNode.title}
+                          className="market-img"
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none';
+                          }}
+                        />
+                      </div>
+                    )}
 
                     <div className="market-stats">
                       <div className="stat-row">
                         <span className="stat-label">Volume</span>
-                        <span className="stat-value">$2,450,000</span>
+                        <span className="stat-value">
+                          {apiData?.market_data?.volume || "$2,450,000"}
+                        </span>
                       </div>
                       <div className="stat-row">
                         <span className="stat-label">Liquidity</span>
-                        <span className="stat-value">$1,250,000</span>
+                        <span className="stat-value">
+                          {apiData?.market_data?.liquidity || "$1,250,000"}
+                        </span>
                       </div>
+                      {apiData?.market_data?.volume_24hr && (
+                        <div className="stat-row">
+                          <span className="stat-label">24hr Volume</span>
+                          <span className="stat-value">
+                            {apiData.market_data.volume_24hr}
+                          </span>
+                        </div>
+                      )}
                     </div>
 
                     <div className="outcomes-section">
@@ -723,14 +868,35 @@ export default function HedgePage() {
                       <div className="outcomes-list">
                         <div className="outcome-item">
                           <span className="outcome-label">Yes</span>
-                          <span className="outcome-price">$0.65</span>
+                          <span className="outcome-price">
+                            {apiData?.market_data?.yes_price || "$0.65"}
+                          </span>
+                          <span className="outcome-percentage">
+                            {apiData?.market_data?.yes_percentage?.toFixed(1) || "65"}%
+                          </span>
                         </div>
                         <div className="outcome-item">
                           <span className="outcome-label">No</span>
-                          <span className="outcome-price">$0.35</span>
+                          <span className="outcome-price">
+                            {apiData?.market_data?.no_price || "$0.35"}
+                          </span>
+                          <span className="outcome-percentage">
+                            {apiData?.market_data?.no_percentage?.toFixed(1) || "35"}%
+                          </span>
                         </div>
                       </div>
                     </div>
+
+                    {apiData?.metadata?.market_url && (
+                      <a 
+                        href={apiData.metadata.market_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="view-market-btn glass-button"
+                      >
+                        View on PolyMarket →
+                      </a>
+                    )}
                   </div>
                 ) : null;
               })()
@@ -772,11 +938,15 @@ export default function HedgePage() {
                         <div className="node-item-outcomes">
                           <div className="outcome-option">
                             <span className="outcome-label">YES</span>
-                            <span className="outcome-price">$0.65</span>
+                            <span className="outcome-price">
+                              {node.fullData?.market_data?.yes_price || "$0.65"}
+                            </span>
                           </div>
                           <div className="outcome-option">
                             <span className="outcome-label">NO</span>
-                            <span className="outcome-price">$0.35</span>
+                            <span className="outcome-price">
+                              {node.fullData?.market_data?.no_price || "$0.35"}
+                            </span>
                           </div>
                         </div>
                       </div>
