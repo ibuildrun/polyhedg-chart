@@ -121,16 +121,16 @@ export default function Sidebar() {
   }, []);
 
   return (
-    <aside className="sidebar">
+    <aside className="sidebar glass-sidebar">
       {/* Logo at top */}
       <div className="sidebar-header">
         <div className="logo-container">
           <Image
             src="/logo.png"
             alt="Polyhedg Logo"
-            width={28}
-            height={28}
-            className="h-8 w-auto"
+            width={200}
+            height={50}
+            className="logo-image"
             priority
             unoptimized
           />
@@ -139,41 +139,85 @@ export default function Sidebar() {
 
       {/* Create Hedge Button */}
       <div className="sidebar-content">
-        <button className="create-hedge-btn" onClick={handleCreateHedge}>
+        <button
+          className="create-hedge-btn glass-button-primary"
+          onClick={handleCreateHedge}
+        >
           <svg
-            width="16"
-            height="16"
+            className="btn-icon"
+            width="18"
+            height="18"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
-            strokeWidth="2"
+            strokeWidth="2.5"
             strokeLinecap="round"
             strokeLinejoin="round"
           >
             <path d="M12 5v14M5 12h14" />
           </svg>
-          Create Hedge
+          <span className="btn-text">New Hedge</span>
         </button>
 
         {/* Hedges List */}
         <div className="hedges-section">
-          <h3 className="hedges-title">Hedges</h3>
+          <div className="section-header">
+            <h3 className="hedges-title">Your Hedges</h3>
+            <span className="hedges-count">{hedges.length}</span>
+          </div>
           <div className="hedges-list">
-            {hedges.map((hedge) => (
-              <div
-                key={hedge.id}
-                className={`hedge-item ${selectedHedgeId === hedge.id ? "selected" : ""}`}
-                onClick={() => handleHedgeClick(hedge.id)}
-              >
-                <span className="hedge-name">{hedge.name}</span>
+            {hedges.length === 0 ? (
+              <div className="empty-state">
+                <svg
+                  width="40"
+                  height="40"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  opacity="0.3"
+                >
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                  <line x1="9" y1="9" x2="15" y2="15" />
+                  <line x1="15" y1="9" x2="9" y2="15" />
+                </svg>
+                <p className="empty-text">No hedges yet</p>
+                <p className="empty-subtext">Create your first hedge to get started</p>
               </div>
-            ))}
+            ) : (
+              hedges.map((hedge) => (
+                <div
+                  key={hedge.id}
+                  className={`hedge-item ${selectedHedgeId === hedge.id ? "selected" : ""}`}
+                  onClick={() => handleHedgeClick(hedge.id)}
+                >
+                  <div className="hedge-icon">
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+                      <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+                      <line x1="12" y1="22.08" x2="12" y2="12" />
+                    </svg>
+                  </div>
+                  <span className="hedge-name">{hedge.name}</span>
+                  {selectedHedgeId === hedge.id && (
+                    <div className="active-indicator" />
+                  )}
+                </div>
+              ))
+            )}
           </div>
         </div>
       </div>
 
       {/* User Info at bottom */}
-      <div className="sidebar-footer">
+      <div className="sidebar-footer glass-footer">
         <div className="user-info">
           <div className="user-avatar">
             <span className="user-initials">JD</span>
@@ -182,6 +226,20 @@ export default function Sidebar() {
             <span className="user-name">John Doe</span>
             <span className="user-description">CFO at Stephens and Co</span>
           </div>
+          <button className="user-menu-btn">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <circle cx="12" cy="12" r="1" />
+              <circle cx="12" cy="5" r="1" />
+              <circle cx="12" cy="19" r="1" />
+            </svg>
+          </button>
         </div>
       </div>
     </aside>

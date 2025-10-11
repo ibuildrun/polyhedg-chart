@@ -52,8 +52,11 @@ class CategoryMatcher:
 
 Available categories: {json.dumps(available_categories)}
 
+CRITICAL: You MUST ONLY use category names from the Available categories list above. Do NOT create new categories.
+Match the names EXACTLY as they appear in the list (case-sensitive).
+
 Return ALL relevant categories with confidence > 0.5. Format as JSON with:
-- "categories": array of objects with "name", "confidence" (0-1), and "reason" for each
+- "categories": array of objects with "name" (MUST be exact match from list), "confidence" (0-1), and "reason"
 - "overall_confidence": overall confidence score (0-1)"""
         
         try:

@@ -42,3 +42,21 @@ class SmartSearchRequest(BaseModel):
     query: str = Field(..., description="Natural language query to search for events")
     min_confidence: Optional[float] = Field(default=0.5, description="Minimum confidence threshold for categories")
     input_file: Optional[str] = Field(default="./data/res/combined-and-filtered.json", description="Path to JSON file containing events")
+    max_total_events: Optional[int] = Field(default=25, description="Maximum total events to return (pre-filtered before AI scoring)")
+    enable_ai_scoring: Optional[bool] = Field(default=True, description="Enable AI relevance scoring")
+
+
+class SimplifiedEvent(BaseModel):
+    """Simplified event structure for frontend"""
+    id: str
+    title: str
+    description: str
+    value: Optional[str] = None
+    change: Optional[str] = None
+    type: str = "neutral"  # positive, negative, neutral
+    selected: bool = False
+    size: str = "medium"  # small, medium, large
+    category: str
+    market_data: Dict[str, Any]
+    dates: Dict[str, str]
+    metadata: Dict[str, Any]

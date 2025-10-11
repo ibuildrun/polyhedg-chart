@@ -12,8 +12,14 @@ build
 .gitignore
 README.md
 .DS_Store
-data/
-*.sh
 venv/
 env/
-
+node_modules/
+.env
+.env.local
+*.log
+tests/
+.pytest_cache/
+.coverage
+htmlcov/
+Caddyfile
