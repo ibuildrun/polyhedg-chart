@@ -1,5 +1,7 @@
 # PolyMarket Order Proxy API
 
+http://5.75.136.89:8000/docs#/
+
 This project is a secure, self-hosted API that acts as a proxy to the Polymarket CLOB (Central Limit Order Book). It allows a frontend application to request the placement of batch limit sell orders without exposing any private keys to the client.
 
 ## Features
