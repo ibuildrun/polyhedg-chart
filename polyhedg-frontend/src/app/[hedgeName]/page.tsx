@@ -113,7 +113,8 @@ export default function HedgePage() {
       const requestBody = { query };
       console.log("📤 Request body:", JSON.stringify(requestBody));
       
-      const response = await fetch("http://localhost:8000/api/smart-search/simplified", {
+      // Use deployed API endpoint
+      const response = await fetch("http://34.182.66.241/api/smart-search/simplified", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -130,14 +131,24 @@ export default function HedgePage() {
       }
 
       const data = await response.json();
+      
+      // Handle signed response format
+      const responseData = data.data || data; // Support both signed and unsigned formats
+      const signature = data.signature;
+      const wallet = data.wallet;
+      const timestamp = data.timestamp;
+      
       console.log("✅ API Response:", {
-        eventCount: data.events?.length || 0,
-        stats: data.stats,
-        firstEvent: data.events?.[0]?.title,
+        eventCount: responseData.events?.length || 0,
+        stats: responseData.stats,
+        firstEvent: responseData.events?.[0]?.title,
+        signed: !!signature,
+        wallet: wallet,
+        timestamp: timestamp
       });
       
       // Sort events by relevance_score to find top 5
-      const sortedEvents = [...data.events].sort((a, b) => 
+      const sortedEvents = [...responseData.events].sort((a, b) => 
         (b.relevance_score || 0) - (a.relevance_score || 0)
       );
       const top5Ids = new Set(sortedEvents.slice(0, 5).map((e: any) => e.id));
@@ -148,10 +159,10 @@ export default function HedgePage() {
       })));
 
       // Transform API events to NodeData format with connections
-      const transformedEvents: NodeData[] = data.events.map((event: any, index: number) => {
+      const transformedEvents: NodeData[] = responseData.events.map((event: any, index: number) => {
         // Create connections based on shared tags with limit to reduce density
         const eventTags = event.metadata?.tags || [];
-        const connections = data.events
+        const connections = responseData.events
           .filter((e: any, i: number) => {
             if (i === index || e.id === event.id) return false;
             
