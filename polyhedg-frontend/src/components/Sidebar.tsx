@@ -128,13 +128,12 @@ export default function Sidebar() {
           <Image
             src="/logo.png"
             alt="Polyhedg Logo"
-            width={32}
-            height={32}
+            width={200}
+            height={50}
             className="logo-image"
             priority
             unoptimized
           />
-          <span className="logo-text">PolyHedg</span>
         </div>
       </div>
 

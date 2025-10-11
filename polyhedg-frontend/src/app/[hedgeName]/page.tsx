@@ -72,11 +72,11 @@ export default function HedgePage() {
   // Configure force simulation after mount
   useEffect(() => {
     if (graphRef.current) {
-      // Configure forces to spread nodes far apart with larger collision radius
-      graphRef.current.d3Force("charge", d3.forceManyBody().strength(-2000));
-      graphRef.current.d3Force("link", d3.forceLink().distance(350).strength(0.2));
-      graphRef.current.d3Force("center", d3.forceCenter().strength(0.015));
-      graphRef.current.d3Force("collision", d3.forceCollide().radius(120));
+      // Configure forces to spread nodes very far apart
+      graphRef.current.d3Force("charge", d3.forceManyBody().strength(-3000));
+      graphRef.current.d3Force("link", d3.forceLink().distance(450).strength(0.15));
+      graphRef.current.d3Force("center", d3.forceCenter().strength(0.01));
+      graphRef.current.d3Force("collision", d3.forceCollide().radius(150));
     }
   }, [graphData]);
 
@@ -107,32 +107,72 @@ export default function HedgePage() {
     setIsFetchingEvents(true);
     setApiError(null);
     
+    console.log("🔍 Fetching from API with query:", query);
+    
     try {
+      const requestBody = { query };
+      console.log("📤 Request body:", JSON.stringify(requestBody));
+      
       const response = await fetch("http://localhost:8000/api/smart-search/simplified", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ query }),
+        body: JSON.stringify(requestBody),
       });
 
+      console.log("📥 Response status:", response.status);
+
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error("❌ API error:", errorText);
         throw new Error(`API error: ${response.statusText}`);
       }
 
       const data = await response.json();
+      console.log("✅ API Response:", {
+        eventCount: data.events?.length || 0,
+        stats: data.stats,
+        firstEvent: data.events?.[0]?.title,
+      });
       
+      // Sort events by relevance_score to find top 5
+      const sortedEvents = [...data.events].sort((a, b) => 
+        (b.relevance_score || 0) - (a.relevance_score || 0)
+      );
+      const top5Ids = new Set(sortedEvents.slice(0, 5).map((e: any) => e.id));
+      
+      console.log("🎯 Top 5 events by relevance:", sortedEvents.slice(0, 5).map((e: any) => ({
+        title: e.title,
+        score: e.relevance_score
+      })));
+
       // Transform API events to NodeData format with connections
       const transformedEvents: NodeData[] = data.events.map((event: any, index: number) => {
-        // Create connections based on similar categories
+        // Create connections based on shared tags with limit to reduce density
+        const eventTags = event.metadata?.tags || [];
         const connections = data.events
-          .filter((e: any, i: number) => 
-            i !== index && 
-            e.category === event.category &&
-            e.id !== event.id
-          )
-          .slice(0, 3) // Limit to 3 connections per node
+          .filter((e: any, i: number) => {
+            if (i === index || e.id === event.id) return false;
+            
+            const otherTags = e.metadata?.tags || [];
+            
+            // Check if they share at least 2 tags (more selective)
+            const sharedTags = eventTags.filter((tag: string) => 
+              otherTags.includes(tag)
+            );
+            
+            return sharedTags.length >= 2;
+          })
+          .slice(0, 5) // Limit to 5 connections per node max
           .map((e: any) => e.id);
+
+        // Determine size based on relevance_score
+        const relevanceScore = event.relevance_score || 30;
+        let nodeSize: "small" | "medium" | "large";
+        if (relevanceScore >= 70) nodeSize = "large";
+        else if (relevanceScore >= 50) nodeSize = "medium";
+        else nodeSize = "small";
 
         return {
           id: event.id,
@@ -140,17 +180,32 @@ export default function HedgePage() {
           value: event.value,
           change: event.change || "0%",
           type: event.type as "positive" | "negative" | "neutral",
-          selected: event.market_data.yes_percentage > 55, // Auto-select high probability events
-          size: event.size as "small" | "medium" | "large",
+          selected: top5Ids.has(event.id), // Auto-select top 5 by relevance
+          size: nodeSize,
           connections: connections,
           // Store full event data for sidebar display
           fullData: event,
         };
       });
 
+      console.log("🔄 Transformed events:", transformedEvents.length);
+      console.log("📊 Event categories:", [...new Set(transformedEvents.map(e => e.fullData?.category))]);
+      console.log("🔗 Connection stats:", {
+        avgConnections: (transformedEvents.reduce((sum, e) => sum + e.connections.length, 0) / transformedEvents.length).toFixed(1),
+        maxConnections: Math.max(...transformedEvents.map(e => e.connections.length)),
+        minConnections: Math.min(...transformedEvents.map(e => e.connections.length)),
+      });
+
       // Update nodes with API data
       setNodes(transformedEvents);
-      sessionStorage.setItem("hedgeNodes", JSON.stringify(transformedEvents));
+      
+      // Store with timestamp to track freshness
+      const cacheData = {
+        query,
+        timestamp: Date.now(),
+        data: transformedEvents
+      };
+      sessionStorage.setItem("hedgeNodes", JSON.stringify(cacheData));
       
       return transformedEvents;
     } catch (error) {
@@ -207,16 +262,10 @@ export default function HedgePage() {
       const sizeMap = { small: 12, medium: 16, large: 20 };
       const nodeSize = sizeMap[node.size];
 
-      // Determine color based on selection and type
-      let color = "rgba(168, 85, 247, 0.8)"; // Default purple
-      if (node.selected) {
-        color = "rgba(168, 85, 247, 1)"; // Bright purple for selected
-      } else {
-        // Use different colors based on type when not selected
-        if (node.type === "positive") color = "rgba(34, 197, 94, 0.7)";
-        else if (node.type === "negative") color = "rgba(239, 68, 68, 0.7)";
-        else color = "rgba(156, 163, 175, 0.7)";
-      }
+      // Grey for selected (top 5), purple for all others
+      let color = node.selected 
+        ? "rgba(156, 163, 175, 1)"     // Grey for selected top 5 to execute
+        : "rgba(168, 85, 247, 0.75)";  // Standard purple for all others
 
       return {
         id: node.id,
@@ -245,8 +294,8 @@ export default function HedgePage() {
               source: node.id,
               target: connectedNodeId,
               color: node.selected || connectedNode.selected 
-                ? "rgba(168, 85, 247, 0.5)" 
-                : "rgba(168, 85, 247, 0.25)",
+                ? "rgba(156, 163, 175, 0.5)"  // Grey for links to selected nodes
+                : "rgba(168, 85, 247, 0.25)",  // Purple for other links
               width: node.selected || connectedNode.selected ? 3 : 2,
             });
           }
@@ -427,8 +476,9 @@ export default function HedgePage() {
       );
       
       if (isSelected) {
-        gradient.addColorStop(0, "rgba(168, 85, 247, 0.4)");
-        gradient.addColorStop(1, "rgba(168, 85, 247, 0)");
+        // Grey glow for selected (top 5 to execute)
+        gradient.addColorStop(0, "rgba(156, 163, 175, 0.4)");
+        gradient.addColorStop(1, "rgba(156, 163, 175, 0)");
       } else if (isHovered) {
         gradient.addColorStop(0, "rgba(168, 85, 247, 0.25)");
         gradient.addColorStop(1, "rgba(168, 85, 247, 0)");
@@ -513,28 +563,51 @@ export default function HedgePage() {
 
     // Initialize nodes - try to fetch from API first
     const initializeData = async () => {
-      // Clear cached data on fresh load to force API call
-      sessionStorage.removeItem("hedgeNodes");
-      
       // Default query based on hedge name or description
       let query = displayName || hedgeName;
       if (hedgeData?.description) {
         query = hedgeData.description;
       }
       
-      console.log("Initializing with query:", query);
+      console.log("🎯 Initializing hedge page with query:", query);
+      console.log("📋 Hedge data:", { name: hedgeData?.name, description: hedgeData?.description });
+      
+      // Check if we have cached data for this exact query
+      const cachedData = sessionStorage.getItem("hedgeNodes");
+      if (cachedData) {
+        try {
+          const parsed = JSON.parse(cachedData);
+          // Check if cache is for same query and less than 5 minutes old
+          if (parsed.query === query && (Date.now() - parsed.timestamp) < 300000) {
+            console.log("✅ Using cached data for query:", query);
+            setNodes(parsed.data);
+            generateGraphData(parsed.data);
+            setIsLoading(false);
+            return;
+          } else {
+            console.log("🔄 Cache invalid - different query or too old");
+          }
+        } catch (e) {
+          console.log("⚠️ Cache parse error, fetching fresh");
+        }
+      }
       
       // Always try to fetch from API first
       const apiData = await fetchEventsFromAPI(query);
       if (apiData && apiData.length > 0) {
-        console.log("API data loaded successfully:", apiData.length, "events");
+        console.log("✅ API data loaded successfully:", apiData.length, "events");
         generateGraphData(apiData);
       } else {
-        console.log("API failed or no data, using mock data");
+        console.log("⚠️ API failed or no data, using mock data");
         // Fall back to mock data if API fails
         const mockData = initializeNodes();
         setNodes(mockData);
-        sessionStorage.setItem("hedgeNodes", JSON.stringify(mockData));
+        const cacheData = {
+          query,
+          timestamp: Date.now(),
+          data: mockData
+        };
+        sessionStorage.setItem("hedgeNodes", JSON.stringify(cacheData));
         generateGraphData(mockData);
       }
       
@@ -602,9 +675,13 @@ export default function HedgePage() {
               <button
                 className="refresh-button glass-button"
                 onClick={() => {
-                  if (hedgeData?.description) {
-                    fetchEventsFromAPI(hedgeData.description);
-                  }
+                  console.log("🔄 Manual refresh triggered");
+                  // Clear cache to force fresh fetch
+                  sessionStorage.removeItem("hedgeNodes");
+                  
+                  const query = hedgeData?.description || displayName || hedgeName;
+                  console.log("🔍 Refreshing with query:", query);
+                  fetchEventsFromAPI(query);
                 }}
                 disabled={isFetchingEvents}
                 title="Refresh events from API"
@@ -691,12 +768,7 @@ export default function HedgePage() {
               onNodeHover={handleNodeHover}
               linkColor={(link: any) => link.color}
               linkWidth={(link: any) => link.width}
-              linkDirectionalParticles={3}
-              linkDirectionalParticleWidth={3}
-              linkDirectionalParticleSpeed={0.005}
-              linkDirectionalParticleColor={(link: any) =>
-                "rgba(168, 85, 247, 0.8)"
-              }
+              linkDirectionalParticles={0}
               backgroundColor="rgba(0, 0, 0, 0)"
               cooldownTicks={150}
               d3VelocityDecay={0.3}
@@ -922,10 +994,11 @@ export default function HedgePage() {
                         <div className="node-item-header">
                           <h4 className="node-item-title">{node.title}</h4>
                           <span className={`node-item-change ${node.type}`}>
-                            {node.change}
+                            {node.fullData?.market_data?.yes_percentage 
+                              ? `${node.fullData.market_data.yes_percentage.toFixed(1)}% Yes`
+                              : node.value}
                           </span>
                         </div>
-                        <div className="node-item-value">{node.value}</div>
                         <div className="node-item-question">
                           Will {node.title.toLowerCase()} occur before the end
                           of 2024?
