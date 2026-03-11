@@ -1,9 +1,9 @@
 ﻿"use client";
 /**
- * VARIANT 10: Polymarket Clone - Full UI + Smooth Animation
- * Time-based easing between ticks. Y-range slowly adapts via lerp.
- * Grid lines, price labels on right, time labels on bottom,
- * dashed "price to beat" line, orange price badge - like Polymarket.
+ * VARIANT 10: Polymarket Clone - Full UI + Mouse Y Zoom/Pan
+ * Scroll wheel: zoom Y axis in/out (centered on mouse Y position)
+ * Drag up/down: pan Y axis
+ * Double-click: reset to auto Y range
  */
 import { useRef, useEffect } from "react";
 import type { PricePoint } from "./usePolymarketData";
@@ -13,29 +13,24 @@ const WINDOW_MS = 90_000;
 const PAD_R = 65;
 const PAD_B = 22;
 const PAD_T = 2;
-const RANGE_LERP = 0.015; // slow Y-range breathing
+const RANGE_LERP = 0.015;
 
 function easeInOut(t: number): number {
   return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
 }
-
 function niceStep(range: number, target: number): number {
   const rough = range / target;
   const mag = Math.pow(10, Math.floor(Math.log10(rough)));
   const n = rough / mag;
   return (n < 1.5 ? 1 : n < 3 ? 2 : n < 7 ? 5 : 10) * mag;
 }
-
 function fmtPrice(v: number): string {
   return "$" + v.toLocaleString("en-US", { minimumFractionDigits: v >= 1000 ? 0 : 2, maximumFractionDigits: v >= 1000 ? 0 : 2 });
 }
-
 function fmtTime(ms: number): string {
   const d = new Date(ms);
   const h = d.getHours() % 12 || 12;
-  const m = String(d.getMinutes()).padStart(2, "0");
-  const s = String(d.getSeconds()).padStart(2, "0");
-  return h + ":" + m + ":" + s;
+  return h + ":" + String(d.getMinutes()).padStart(2, "0") + ":" + String(d.getSeconds()).padStart(2, "0");
 }
 
 export default function ChartPolymarket({ points }: { points: PricePoint[] }) {
@@ -49,7 +44,6 @@ export default function ChartPolymarket({ points }: { points: PricePoint[] }) {
   const lastTick = useRef(0);
   const dispPrice = useRef(0);
   const basePrice = useRef(0);
-  // Smooth Y range (lerp)
   const yMin = useRef(0);
   const yMax = useRef(0);
   const yMinT = useRef(0);
@@ -59,14 +53,22 @@ export default function ChartPolymarket({ points }: { points: PricePoint[] }) {
   const ptsRef = useRef<PricePoint[]>([]);
   const lastLen = useRef(0);
 
+  // Mouse interaction state
+  const manualY = useRef(false); // user is controlling Y range
+  const manualYMin = useRef(0);
+  const manualYMax = useRef(0);
+  const dragging = useRef(false);
+  const dragStartY = useRef(0);
+  const dragStartYMin = useRef(0);
+  const dragStartYMax = useRef(0);
+  const autoResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     ptsRef.current = points;
     if (points.length > lastLen.current && points.length >= 2) {
       const now = Date.now();
       const v = points[points.length - 1]!.v;
-      if (lastTick.current > 0) {
-        transDur.current = Math.max(100, Math.min(1000, now - lastTick.current));
-      }
+      if (lastTick.current > 0) transDur.current = Math.max(100, Math.min(1000, now - lastTick.current));
       prevPrice.current = dispPrice.current || v;
       nextPrice.current = v;
       transStart.current = now;
@@ -75,6 +77,97 @@ export default function ChartPolymarket({ points }: { points: PricePoint[] }) {
     }
     lastLen.current = points.length;
   }, [points]);
+
+  // Schedule auto-reset after 5s of no interaction
+  const scheduleAutoReset = () => {
+    if (autoResetTimer.current) clearTimeout(autoResetTimer.current);
+    autoResetTimer.current = setTimeout(() => {
+      manualY.current = false;
+    }, 5000);
+  };
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    // Wheel zoom Y
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const box = containerRef.current;
+      if (!box) return;
+      const rect = box.getBoundingClientRect();
+      const cH = rect.height - PAD_B - PAD_T;
+      const mouseYFrac = Math.max(0, Math.min(1, (e.clientY - rect.top - PAD_T) / cH));
+      // Price at mouse position
+      const curMin = manualY.current ? manualYMin.current : yMin.current;
+      const curMax = manualY.current ? manualYMax.current : yMax.current;
+      const priceAtMouse = curMax - mouseYFrac * (curMax - curMin);
+      // Zoom factor
+      const zoomFactor = e.deltaY > 0 ? 1.12 : 0.88;
+      const range = curMax - curMin;
+      const newRange = range * zoomFactor;
+      // Keep price at mouse position fixed
+      const newMin = priceAtMouse - (1 - mouseYFrac) * newRange;
+      const newMax = priceAtMouse + mouseYFrac * newRange;
+      manualY.current = true;
+      manualYMin.current = newMin;
+      manualYMax.current = newMax;
+      scheduleAutoReset();
+    };
+
+    // Drag pan Y
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      dragging.current = true;
+      dragStartY.current = e.clientY;
+      const curMin = manualY.current ? manualYMin.current : yMin.current;
+      const curMax = manualY.current ? manualYMax.current : yMax.current;
+      dragStartYMin.current = curMin;
+      dragStartYMax.current = curMax;
+      canvas.style.cursor = "grabbing";
+    };
+    const onMouseMove = (e: MouseEvent) => {
+      if (!dragging.current) {
+        canvas.style.cursor = "grab";
+        return;
+      }
+      const box = containerRef.current;
+      if (!box) return;
+      const cH = box.clientHeight - PAD_B - PAD_T;
+      const dy = e.clientY - dragStartY.current;
+      const range = dragStartYMax.current - dragStartYMin.current;
+      const priceDelta = (dy / cH) * range; // drag down = shift prices down
+      manualY.current = true;
+      manualYMin.current = dragStartYMin.current + priceDelta;
+      manualYMax.current = dragStartYMax.current + priceDelta;
+      scheduleAutoReset();
+    };
+    const onMouseUp = () => {
+      dragging.current = false;
+      canvas.style.cursor = "grab";
+    };
+
+    // Double-click reset
+    const onDblClick = () => {
+      manualY.current = false;
+      if (autoResetTimer.current) clearTimeout(autoResetTimer.current);
+    };
+
+    canvas.addEventListener("wheel", onWheel, { passive: false });
+    canvas.addEventListener("mousedown", onMouseDown);
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+    canvas.addEventListener("dblclick", onDblClick);
+
+    return () => {
+      canvas.removeEventListener("wheel", onWheel);
+      canvas.removeEventListener("mousedown", onMouseDown);
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+      canvas.removeEventListener("dblclick", onDblClick);
+      if (autoResetTimer.current) clearTimeout(autoResetTimer.current);
+    };
+  }, []);
 
   useEffect(() => {
     const tick = () => {
@@ -86,7 +179,6 @@ export default function ChartPolymarket({ points }: { points: PricePoint[] }) {
       const now = Date.now();
       const tMin = now - WINDOW_MS;
 
-      // Init
       if (!inited.current && pts.length > 10) {
         const last = pts[pts.length - 1]!;
         dispPrice.current = last.v;
@@ -105,14 +197,13 @@ export default function ChartPolymarket({ points }: { points: PricePoint[] }) {
       }
       if (!inited.current) { rafRef.current = requestAnimationFrame(tick); return; }
 
-      // Time-based easing for price
       const el = now - transStart.current;
       const prog = Math.min(1, el / transDur.current);
       dispPrice.current = prevPrice.current + (nextPrice.current - prevPrice.current) * easeInOut(prog);
 
       const visible = histRef.current.filter(p => p.t >= tMin);
 
-      // Compute target Y range from visible data
+      // Auto Y range target
       let lo = Infinity, hi = -Infinity;
       for (const p of visible) { if (p.v < lo) lo = p.v; if (p.v > hi) hi = p.v; }
       const dp = dispPrice.current;
@@ -122,9 +213,14 @@ export default function ChartPolymarket({ points }: { points: PricePoint[] }) {
       const r = (hi - lo) * 0.2 || 10;
       yMinT.current = lo - r;
       yMaxT.current = hi + r;
-      // Lerp Y range (slow breathing like Polymarket)
-      yMin.current += (yMinT.current - yMin.current) * RANGE_LERP;
-      yMax.current += (yMaxT.current - yMax.current) * RANGE_LERP;
+      if (!manualY.current) {
+        yMin.current += (yMinT.current - yMin.current) * RANGE_LERP;
+        yMax.current += (yMaxT.current - yMax.current) * RANGE_LERP;
+      }
+
+      // Use manual or auto Y range
+      const rn = manualY.current ? manualYMin.current : yMin.current;
+      const rx = manualY.current ? manualYMax.current : yMax.current;
 
       // Canvas
       const dpr = window.devicePixelRatio || 1;
@@ -139,12 +235,10 @@ export default function ChartPolymarket({ points }: { points: PricePoint[] }) {
 
       const cW = w - PAD_R;
       const cH = h - PAD_B - PAD_T;
-      const rn = yMin.current;
-      const rx = yMax.current;
       const mx = (t: number) => ((t - tMin) / (now - tMin)) * cW;
       const my = (v: number) => PAD_T + cH - ((v - rn) / (rx - rn)) * cH;
 
-      // --- HORIZONTAL GRID + PRICE LABELS ---
+      // Grid + price labels
       const yRange = rx - rn;
       const step = niceStep(yRange, 4);
       const fl = Math.ceil(rn / step) * step;
@@ -164,7 +258,7 @@ export default function ChartPolymarket({ points }: { points: PricePoint[] }) {
         ctx.fillText(fmtPrice(v), cW + 6, y);
       }
 
-      // --- VERTICAL GRID + TIME LABELS ---
+      // Time labels
       const tStep = WINDOW_MS > 120000 ? 30000 : 15000;
       const ts = Math.ceil(tMin / tStep) * tStep;
       ctx.textBaseline = "top";
@@ -183,7 +277,7 @@ export default function ChartPolymarket({ points }: { points: PricePoint[] }) {
         ctx.fillText(fmtTime(t), x, PAD_T + cH + 5);
       }
 
-      // --- DASHED "Price to beat" LINE ---
+      // Dashed "price to beat"
       if (basePrice.current > rn && basePrice.current < rx) {
         const by = my(basePrice.current);
         ctx.save();
@@ -197,7 +291,7 @@ export default function ChartPolymarket({ points }: { points: PricePoint[] }) {
         ctx.restore();
       }
 
-      // --- CHART LINE ---
+      // Chart line
       const dp2: { x: number; y: number }[] = [];
       for (const p of visible) dp2.push({ x: mx(p.t), y: my(p.v) });
       dp2.push({ x: mx(now), y: my(dp) });
@@ -229,7 +323,7 @@ export default function ChartPolymarket({ points }: { points: PricePoint[] }) {
         ctx.fillStyle = gr;
         ctx.fill();
 
-        // Dashed line from tip to right edge
+        // Dashed line to right
         ctx.save();
         ctx.setLineDash([3, 3]);
         ctx.strokeStyle = "rgba(247,147,26,0.5)";
@@ -240,26 +334,20 @@ export default function ChartPolymarket({ points }: { points: PricePoint[] }) {
         ctx.stroke();
         ctx.restore();
 
-        // Price badge on right axis
+        // Price badge
         const ps = fmtPrice(dp);
         ctx.font = "600 10px Inter, -apple-system, sans-serif";
         const tw = ctx.measureText(ps).width;
-        const bx = cW + 2;
-        const bw = tw + 10;
-        const bh = 16;
-        const by2 = ly - bh / 2;
-        // Badge background
         ctx.fillStyle = LINE_COLOR;
         ctx.beginPath();
-        ctx.roundRect(bx, by2, bw, bh, 3);
+        ctx.roundRect(cW + 2, ly - 8, tw + 10, 16, 3);
         ctx.fill();
-        // Badge text
         ctx.fillStyle = "#000";
         ctx.textAlign = "left";
         ctx.textBaseline = "middle";
-        ctx.fillText(ps, bx + 5, ly + 0.5);
+        ctx.fillText(ps, cW + 7, ly + 0.5);
 
-        // Pulsing dot
+        // Dot
         const pulse = 0.5 + 0.5 * Math.sin(now / 400);
         ctx.beginPath();
         ctx.arc(lx, ly, 4 + pulse * 2, 0, Math.PI * 2);
@@ -275,6 +363,15 @@ export default function ChartPolymarket({ points }: { points: PricePoint[] }) {
         ctx.fill();
       }
 
+      // Manual mode indicator
+      if (manualY.current) {
+        ctx.font = "500 9px Inter, -apple-system, sans-serif";
+        ctx.fillStyle = "rgba(255,255,255,0.25)";
+        ctx.textAlign = "left";
+        ctx.textBaseline = "top";
+        ctx.fillText("manual zoom (dblclick to reset)", 6, 6);
+      }
+
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
@@ -283,7 +380,7 @@ export default function ChartPolymarket({ points }: { points: PricePoint[] }) {
 
   return (
     <div ref={containerRef} style={{ width: "100%", height: "100%", position: "relative" }}>
-      <canvas ref={canvasRef} style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%" }} />
+      <canvas ref={canvasRef} style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", cursor: "grab" }} />
     </div>
   );
 }
