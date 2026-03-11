@@ -1,32 +1,72 @@
 ﻿"use client";
 /**
- * VARIANT 10: Polymarket Clone - Pure Canvas, Smooth Everything
- * ALL values are lerped: price Y positions AND Y-axis range.
- * No TradingView - pure canvas for total control over smoothness.
- * Every frame: lerp display values, lerp Y range, redraw bezier curve.
+ * VARIANT 10: Polymarket Clone - TIME-BASED interpolation
+ * When new tick arrives: prevPrice=current display, nextPrice=new tick.
+ * Between ticks: smoothly interpolate from prev to next over the tick interval.
+ * No lerp jitter - pure time-based easing. Line never jumps.
  */
 import { useRef, useEffect } from "react";
 import type { PricePoint } from "./usePolymarketData";
 
 const LINE_COLOR = "#F7931A";
-const PRICE_LERP = 0.05;
-const RANGE_LERP = 0.03;
+const RANGE_LERP = 0.02;
 const WINDOW_MS = 90_000;
+
+// Ease-in-out for smooth transitions
+function easeInOut(t: number): number {
+  return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+}
 
 export default function ChartPolymarket({ points }: { points: PricePoint[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef(0);
-  const displayY = useRef(0);
-  const targetY = useRef(0);
+
+  // Time-based interpolation state
+  const prevPrice = useRef(0);
+  const nextPrice = useRef(0);
+  const transitionStart = useRef(0);
+  const transitionDuration = useRef(300); // ms, adapts to actual tick interval
+  const lastTickTime = useRef(0);
+  const displayPrice = useRef(0);
+
+  // Smooth Y range
   const rangeMin = useRef(0);
   const rangeMax = useRef(0);
   const rangeMinTarget = useRef(0);
   const rangeMaxTarget = useRef(0);
   const inited = useRef(false);
-  const pointsRef = useRef<PricePoint[]>([]);
 
-  useEffect(() => { pointsRef.current = points; }, [points]);
+  // Snapshot of historical points (excluding the animated tip)
+  const historyRef = useRef<PricePoint[]>([]);
+  const pointsRef = useRef<PricePoint[]>([]);
+  const lastPointsLen = useRef(0);
+
+  useEffect(() => {
+    pointsRef.current = points;
+
+    // Detect new tick
+    if (points.length > lastPointsLen.current && points.length >= 2) {
+      const now = Date.now();
+      const newVal = points[points.length - 1]!.v;
+
+      if (lastTickTime.current > 0) {
+        // Adapt duration to actual tick interval (clamped 100-1000ms)
+        const interval = now - lastTickTime.current;
+        transitionDuration.current = Math.max(100, Math.min(1000, interval));
+      }
+
+      // Previous display becomes start, new tick becomes target
+      prevPrice.current = displayPrice.current || newVal;
+      nextPrice.current = newVal;
+      transitionStart.current = now;
+      lastTickTime.current = now;
+
+      // Store history (all points except the very last which we animate)
+      historyRef.current = points.slice(0, -1);
+    }
+    lastPointsLen.current = points.length;
+  }, [points]);
 
   useEffect(() => {
     const tick = () => {
@@ -39,41 +79,50 @@ export default function ChartPolymarket({ points }: { points: PricePoint[] }) {
       }
 
       const now = Date.now();
-      const tMin = now - WINDOW_MS;
-      const visible = pts.filter(p => p.t >= tMin);
-      if (visible.length < 2) { rafRef.current = requestAnimationFrame(tick); return; }
 
-      const last = visible[visible.length - 1]!;
-      targetY.current = last.v;
-
-      // Init on first frame
+      // Init
       if (!inited.current) {
-        displayY.current = last.v;
+        const last = pts[pts.length - 1]!;
+        displayPrice.current = last.v;
+        prevPrice.current = last.v;
+        nextPrice.current = last.v;
+        transitionStart.current = now;
+        lastTickTime.current = now;
+        historyRef.current = pts.slice(0, -1);
+
         let lo = Infinity, hi = -Infinity;
-        for (const p of visible) { if (p.v < lo) lo = p.v; if (p.v > hi) hi = p.v; }
+        for (const p of pts) { if (p.v < lo) lo = p.v; if (p.v > hi) hi = p.v; }
         const pad = (hi - lo) * 0.15 || 10;
         rangeMin.current = rangeMinTarget.current = lo - pad;
         rangeMax.current = rangeMaxTarget.current = hi + pad;
         inited.current = true;
       }
 
-      // Lerp display price toward target
-      displayY.current += (targetY.current - displayY.current) * PRICE_LERP;
+      // Time-based interpolation: smooth from prev to next
+      const elapsed = now - transitionStart.current;
+      const progress = Math.min(1, elapsed / transitionDuration.current);
+      const eased = easeInOut(progress);
+      displayPrice.current = prevPrice.current + (nextPrice.current - prevPrice.current) * eased;
 
-      // Calculate target Y range from all visible points + display value
+      // Visible history
+      const tMin = now - WINDOW_MS;
+      const visibleHistory = historyRef.current.filter(p => p.t >= tMin);
+
+      // Calculate target Y range
       let lo = Infinity, hi = -Infinity;
-      for (const p of visible) { if (p.v < lo) lo = p.v; if (p.v > hi) hi = p.v; }
-      if (displayY.current < lo) lo = displayY.current;
-      if (displayY.current > hi) hi = displayY.current;
+      for (const p of visibleHistory) { if (p.v < lo) lo = p.v; if (p.v > hi) hi = p.v; }
+      if (displayPrice.current < lo) lo = displayPrice.current;
+      if (displayPrice.current > hi) hi = displayPrice.current;
+      if (lo === Infinity) { lo = displayPrice.current - 10; hi = displayPrice.current + 10; }
       const pad = (hi - lo) * 0.15 || 10;
       rangeMinTarget.current = lo - pad;
       rangeMaxTarget.current = hi + pad;
 
-      // Lerp Y range (this prevents the "jump" when range changes)
+      // Lerp Y range
       rangeMin.current += (rangeMinTarget.current - rangeMin.current) * RANGE_LERP;
       rangeMax.current += (rangeMaxTarget.current - rangeMax.current) * RANGE_LERP;
 
-      // Canvas setup
+      // Canvas
       const dpr = window.devicePixelRatio || 1;
       const w = container.clientWidth;
       const h = container.clientHeight;
@@ -91,16 +140,13 @@ export default function ChartPolymarket({ points }: { points: PricePoint[] }) {
       const mapX = (t: number) => ((t - tMin) / (now - tMin)) * w;
       const mapY = (v: number) => h - ((v - rMin) / (rMax - rMin)) * h;
 
-      // Build points array with lerped "now" point at end
+      // Build draw points: history + animated tip
       const drawPts: { x: number; y: number }[] = [];
-      for (const p of visible) {
+      for (const p of visibleHistory) {
         drawPts.push({ x: mapX(p.t), y: mapY(p.v) });
       }
-      // Replace last point Y with lerped display value
-      drawPts[drawPts.length - 1] = {
-        x: mapX(now),
-        y: mapY(displayY.current),
-      };
+      // Animated tip at current time
+      drawPts.push({ x: mapX(now), y: mapY(displayPrice.current) });
 
       if (drawPts.length < 2) { rafRef.current = requestAnimationFrame(tick); return; }
 
@@ -150,8 +196,8 @@ export default function ChartPolymarket({ points }: { points: PricePoint[] }) {
       ctx.fillStyle = "#fff";
       ctx.fill();
 
-      // Price label at right edge
-      const priceStr = "$" + displayY.current.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      // Price label
+      const priceStr = "$" + displayPrice.current.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       ctx.font = "600 11px Inter, -apple-system, sans-serif";
       ctx.fillStyle = LINE_COLOR;
       ctx.textAlign = "right";
