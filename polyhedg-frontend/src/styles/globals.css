@@ -2339,3 +2339,219 @@ body {
     flex-shrink: 0;
   }
 }
+
+/* ===== Chart Demo Page ===== */
+.chart-demo-page {
+  padding: 48px 60px;
+  width: 100%;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #0a0a0f 0%, #12121a 100%);
+  margin: 0 auto;
+}
+
+.chart-demo-header {
+  margin-bottom: 32px;
+}
+
+.chart-demo-header h1 {
+  color: #fff;
+  font-size: 28px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.chart-demo-header p {
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 14px;
+}
+
+.chart-demo-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.chart-demo-card {
+  background: rgba(20, 20, 30, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  overflow: hidden;
+  transition: border-color 0.2s;
+}
+
+.chart-demo-card:hover {
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.chart-demo-stats {
+  display: flex;
+  gap: 32px;
+  padding: 0 24px 20px;
+}
+
+.chart-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.chart-stat-label {
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.chart-stat-value {
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* ===== Price Chart Widget ===== */
+.price-chart-widget {
+  width: 100%;
+  padding: 24px 24px 16px;
+}
+
+.price-chart-header {
+  margin-bottom: 16px;
+}
+
+.price-chart-title {
+  color: #fff;
+  font-size: 17px;
+  font-weight: 600;
+  margin-bottom: 10px;
+  line-height: 1.3;
+}
+
+.price-chart-price-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.price-chart-current {
+  color: #fff;
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -1px;
+}
+
+.price-chart-change {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.price-chart-change.up {
+  color: #22c55e;
+}
+
+.price-chart-change.down {
+  color: #ef4444;
+}
+
+.price-chart-outcomes {
+  display: flex;
+  gap: 8px;
+}
+
+.outcome-pill {
+  padding: 5px 14px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.outcome-pill.yes {
+  background: rgba(34, 197, 94, 0.12);
+  color: #22c55e;
+  border: 1px solid rgba(34, 197, 94, 0.25);
+}
+
+.outcome-pill.no {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+}
+
+.price-chart-canvas-wrap {
+  width: 100%;
+  height: 340px;
+  position: relative;
+}
+
+.price-chart-canvas-wrap canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.price-chart-timeframes {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.tf-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.45);
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.tf-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.tf-btn.active {
+  background: rgba(139, 92, 246, 0.2);
+  color: #c084fc;
+  border-color: rgba(139, 92, 246, 0.4);
+}
+
+/* Hide TradingView watermark */
+.price-chart-canvas-wrap [class*="apply-common-tooltip"],
+.price-chart-canvas-wrap a[href*="tradingview"] {
+  display: none !important;
+}
+
+/* Connection indicator */
+.connection-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.connection-dot.live {
+  background: #22c55e;
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.6);
+  animation: pulse-green 2s ease-in-out infinite;
+}
+
+.connection-dot.off {
+  background: #ef4444;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.4);
+}
+
+@keyframes pulse-green {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.connection-dot.sim {
+  background: #f59e0b;
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.4);
+  animation: pulse-green 2s ease-in-out infinite;
+}

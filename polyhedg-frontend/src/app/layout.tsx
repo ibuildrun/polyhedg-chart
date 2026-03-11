@@ -21,12 +21,7 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" className={`${lato.variable}`}>
-      <body>
-        <div className="flex min-h-screen">
-          <Sidebar />
-          <main className="main-content">{children}</main>
-        </div>
-      </body>
+      <body>{children}</body>
     </html>
   );
 }
