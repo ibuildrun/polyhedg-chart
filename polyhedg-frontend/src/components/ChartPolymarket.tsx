@@ -1,18 +1,16 @@
 ﻿"use client";
 /**
- * VARIANT 10: Polymarket Clone - TIME-BASED interpolation
- * When new tick arrives: prevPrice=current display, nextPrice=new tick.
- * Between ticks: smoothly interpolate from prev to next over the tick interval.
- * No lerp jitter - pure time-based easing. Line never jumps.
+ * VARIANT 10: Polymarket Clone - FIXED Y RANGE
+ * Y-axis range only EXPANDS, never shrinks. Bumps (gorby) keep their height.
+ * Time-based easing between ticks for smooth tip animation.
+ * Exactly like Polymarket: stable chart, no breathing/rescaling.
  */
 import { useRef, useEffect } from "react";
 import type { PricePoint } from "./usePolymarketData";
 
 const LINE_COLOR = "#F7931A";
-const RANGE_LERP = 0.02;
 const WINDOW_MS = 90_000;
 
-// Ease-in-out for smooth transitions
 function easeInOut(t: number): number {
   return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
 }
@@ -22,22 +20,19 @@ export default function ChartPolymarket({ points }: { points: PricePoint[] }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef(0);
 
-  // Time-based interpolation state
+  // Time-based interpolation
   const prevPrice = useRef(0);
   const nextPrice = useRef(0);
   const transitionStart = useRef(0);
-  const transitionDuration = useRef(300); // ms, adapts to actual tick interval
+  const transitionDuration = useRef(300);
   const lastTickTime = useRef(0);
   const displayPrice = useRef(0);
 
-  // Smooth Y range
-  const rangeMin = useRef(0);
-  const rangeMax = useRef(0);
-  const rangeMinTarget = useRef(0);
-  const rangeMaxTarget = useRef(0);
+  // FIXED Y range - only expands, never shrinks
+  const fixedYMin = useRef(0);
+  const fixedYMax = useRef(0);
   const inited = useRef(false);
 
-  // Snapshot of historical points (excluding the animated tip)
   const historyRef = useRef<PricePoint[]>([]);
   const pointsRef = useRef<PricePoint[]>([]);
   const lastPointsLen = useRef(0);
@@ -45,25 +40,27 @@ export default function ChartPolymarket({ points }: { points: PricePoint[] }) {
   useEffect(() => {
     pointsRef.current = points;
 
-    // Detect new tick
     if (points.length > lastPointsLen.current && points.length >= 2) {
       const now = Date.now();
       const newVal = points[points.length - 1]!.v;
 
       if (lastTickTime.current > 0) {
-        // Adapt duration to actual tick interval (clamped 100-1000ms)
         const interval = now - lastTickTime.current;
         transitionDuration.current = Math.max(100, Math.min(1000, interval));
       }
 
-      // Previous display becomes start, new tick becomes target
       prevPrice.current = displayPrice.current || newVal;
       nextPrice.current = newVal;
       transitionStart.current = now;
       lastTickTime.current = now;
-
-      // Store history (all points except the very last which we animate)
       historyRef.current = points.slice(0, -1);
+
+      // Only EXPAND Y range, never shrink
+      if (inited.current) {
+        const pad = (fixedYMax.current - fixedYMin.current) * 0.05;
+        if (newVal < fixedYMin.current + pad) fixedYMin.current = newVal - pad * 3;
+        if (newVal > fixedYMax.current - pad) fixedYMax.current = newVal + pad * 3;
+      }
     }
     lastPointsLen.current = points.length;
   }, [points]);
@@ -79,9 +76,11 @@ export default function ChartPolymarket({ points }: { points: PricePoint[] }) {
       }
 
       const now = Date.now();
+      const tMin = now - WINDOW_MS;
+      const visible = historyRef.current.filter(p => p.t >= tMin);
 
-      // Init
-      if (!inited.current) {
+      // Init: set fixed Y range from all seed data
+      if (!inited.current && pts.length > 10) {
         const last = pts[pts.length - 1]!;
         displayPrice.current = last.v;
         prevPrice.current = last.v;
@@ -92,37 +91,22 @@ export default function ChartPolymarket({ points }: { points: PricePoint[] }) {
 
         let lo = Infinity, hi = -Infinity;
         for (const p of pts) { if (p.v < lo) lo = p.v; if (p.v > hi) hi = p.v; }
-        const pad = (hi - lo) * 0.15 || 10;
-        rangeMin.current = rangeMinTarget.current = lo - pad;
-        rangeMax.current = rangeMaxTarget.current = hi + pad;
+        const range = hi - lo || 20;
+        // Set generous initial range with 25% padding
+        fixedYMin.current = lo - range * 0.25;
+        fixedYMax.current = hi + range * 0.25;
         inited.current = true;
       }
 
-      // Time-based interpolation: smooth from prev to next
+      if (!inited.current) { rafRef.current = requestAnimationFrame(tick); return; }
+
+      // Time-based easing
       const elapsed = now - transitionStart.current;
       const progress = Math.min(1, elapsed / transitionDuration.current);
       const eased = easeInOut(progress);
       displayPrice.current = prevPrice.current + (nextPrice.current - prevPrice.current) * eased;
 
-      // Visible history
-      const tMin = now - WINDOW_MS;
-      const visibleHistory = historyRef.current.filter(p => p.t >= tMin);
-
-      // Calculate target Y range
-      let lo = Infinity, hi = -Infinity;
-      for (const p of visibleHistory) { if (p.v < lo) lo = p.v; if (p.v > hi) hi = p.v; }
-      if (displayPrice.current < lo) lo = displayPrice.current;
-      if (displayPrice.current > hi) hi = displayPrice.current;
-      if (lo === Infinity) { lo = displayPrice.current - 10; hi = displayPrice.current + 10; }
-      const pad = (hi - lo) * 0.15 || 10;
-      rangeMinTarget.current = lo - pad;
-      rangeMaxTarget.current = hi + pad;
-
-      // Lerp Y range
-      rangeMin.current += (rangeMinTarget.current - rangeMin.current) * RANGE_LERP;
-      rangeMax.current += (rangeMaxTarget.current - rangeMax.current) * RANGE_LERP;
-
-      // Canvas
+      // Canvas setup
       const dpr = window.devicePixelRatio || 1;
       const w = container.clientWidth;
       const h = container.clientHeight;
@@ -135,17 +119,17 @@ export default function ChartPolymarket({ points }: { points: PricePoint[] }) {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, w, h);
 
-      const rMin = rangeMin.current;
-      const rMax = rangeMax.current;
+      // FIXED Y range - no recalculation
+      const rMin = fixedYMin.current;
+      const rMax = fixedYMax.current;
       const mapX = (t: number) => ((t - tMin) / (now - tMin)) * w;
       const mapY = (v: number) => h - ((v - rMin) / (rMax - rMin)) * h;
 
-      // Build draw points: history + animated tip
+      // Build draw points
       const drawPts: { x: number; y: number }[] = [];
-      for (const p of visibleHistory) {
+      for (const p of visible) {
         drawPts.push({ x: mapX(p.t), y: mapY(p.v) });
       }
-      // Animated tip at current time
       drawPts.push({ x: mapX(now), y: mapY(displayPrice.current) });
 
       if (drawPts.length < 2) { rafRef.current = requestAnimationFrame(tick); return; }
