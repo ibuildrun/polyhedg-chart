@@ -11,6 +11,7 @@ import ChartCanvasSpline from "~/components/ChartCanvasSpline";
 import ChartTradingView from "~/components/ChartTradingView";
 import ChartSpringCanvas from "~/components/ChartSpringCanvas";
 import ChartSVGAnimated from "~/components/ChartSVGAnimated";
+import ChartPolymarket from "~/components/ChartPolymarket";
 
 interface ChartVariant {
   id: number;
@@ -31,6 +32,7 @@ const variants: ChartVariant[] = [
   { id: 7, title: "TradingView", lib: "lightweight-charts", libColor: "#3b82f6", desc: "Профессиональная библиотека для финансовых графиков. Area series, crosshair, автоскейлинг.", render: (p) => <ChartTradingView points={p.points} /> },
   { id: 8, title: "Canvas Spring Physics", lib: "spring damper", libColor: "#f43f5e", desc: "Пружинная физика: при обновлении цена колеблется вокруг нового значения с затуханием.", render: (p) => <ChartSpringCanvas points={p.points} latest={p.latest} /> },
   { id: 9, title: "SVG rAF Morph", lib: "svg + raf lerp", libColor: "#14b8a6", desc: "SVG path анимируется через requestAnimationFrame  каждый кадр lerp координат к целевым.", render: (p) => <ChartSVGAnimated points={p.points} /> },
+  { id: 10, title: "Polymarket Clone", lib: "TV + canvas overlay", libColor: "#F7931A", desc: "TradingView для осей + canvas overlay с lerp анимацией. Точная копия подхода Polymarket.", render: (p) => <ChartPolymarket points={p.points} /> },
 ];
 
 function StatBadge({ label, value, color }: { label: string; value: string; color?: string }) {
@@ -56,7 +58,7 @@ export default function ChartDemoPage() {
       <div style={{ maxWidth: 1400, margin: "0 auto 16px", display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
         <div>
           <h1 style={{ color: "#fff", fontSize: 18, fontWeight: 700, margin: 0 }}>BTC / USD  Chart Comparison</h1>
-          <p style={{ color: "rgba(255,255,255,0.35)", fontSize: 11, margin: "4px 0 0" }}>9 подходов к рендерингу  один источник данных (Polymarket RTDS)  клик для увеличения</p>
+          <p style={{ color: "rgba(255,255,255,0.35)", fontSize: 11, margin: "4px 0 0" }}>10 подходов к рендерингу  один источник данных (Polymarket RTDS)  клик для увеличения</p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
           <div style={{ display: "flex", gap: 14 }}>
